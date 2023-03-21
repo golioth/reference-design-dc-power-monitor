@@ -26,7 +26,8 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 const struct device *i2c_dev;
 
 /* Convert DC reading to actual value */
-int64_t calculate_reading(uint8_t upper, uint8_t lower) {
+int64_t calculate_reading(uint8_t upper, uint8_t lower)
+{
 	int16_t raw = (upper<<8) | lower;
 	uint64_t big = raw * 125;
 	return big;
@@ -79,13 +80,15 @@ struct mcp3201_data {
 	uint16_t power;
 };
 
-void get_ontime(struct ontime *ot) {
+void get_ontime(struct ontime *ot)
+{
 	ot->ch0 = adc_ch0.runtime;
 	ot->ch1 = adc_ch1.runtime;
 }
 
 /* Callback for LightDB Stream */
-static int async_error_handler(struct golioth_req_rsp *rsp) {
+static int async_error_handler(struct golioth_req_rsp *rsp)
+{
 	if (rsp->err) {
 		LOG_ERR("Async task failed: %d", rsp->err);
 		return rsp->err;
@@ -96,25 +99,39 @@ static int async_error_handler(struct golioth_req_rsp *rsp) {
 /*
  * Validate data received from MCP3201
  */
-static int process_adc_reading(uint8_t buf_data[4], struct mcp3201_data *adc_data) {
-	if (buf_data[0] & 1<<5) { return -ENOTSUP; }	/* Missing NULL bit */
+static int process_adc_reading(uint8_t buf_data[4], struct mcp3201_data *adc_data)
+{
+	if (buf_data[0] & 1<<5) {
+		/* Missing NULL bit */
+		return -ENOTSUP;
+	}
+
 	uint16_t data_msb = 0;
 	uint16_t data_lsb = 0;
+
 	data_msb = buf_data[0] & 0x1F;
 	data_msb |= (data_msb<<7) | (buf_data[1]>>1);
-	for (uint8_t i=0; i<12; i++) {
+
+	for (uint8_t i = 0; i < 12; i++) {
 		bool bit_set = false;
+
 		if (i < 2) {
-			if (buf_data[1] & (1<<(1-i))) { bit_set = true; }
-		}
-		else if (i < 10) {
-			if (buf_data[2] & (1<<(2+7-i))) { bit_set = true; }
-		}
-		else {
-			if (buf_data[3] & (1<<(10+7-i))) { bit_set = true; }
+			if (buf_data[1] & (1<<(1-i))) {
+				bit_set = true;
+			}
+		} else if (i < 10) {
+			if (buf_data[2] & (1<<(2+7-i))) {
+				bit_set = true;
+			}
+		} else {
+			if (buf_data[3] & (1<<(10+7-i))) {
+				bit_set = true;
+			}
 		}
 
-		if (bit_set) { data_lsb |= (1<<i); }
+		if (bit_set) {
+			data_lsb |= (1<<i);
+		}
 	}
 
 	adc_data->val1 = data_msb;
@@ -122,7 +139,8 @@ static int process_adc_reading(uint8_t buf_data[4], struct mcp3201_data *adc_dat
 	return 0;
 }
 
-static int get_adc_reading(adc_node_t *adc, struct mcp3201_data *adc_data) {
+static int get_adc_reading(adc_node_t *adc, struct mcp3201_data *adc_data)
+{
 	int err;
 
 	uint8_t write_buf[6] = {0};
@@ -135,48 +153,49 @@ static int get_adc_reading(adc_node_t *adc, struct mcp3201_data *adc_data) {
 	if (err) {
 		LOG_ERR("I2C write-read err: %d", err);
 		return err;
-	} else {
-		adc_data->val1 = (read_buf[0]<<8) | read_buf[1];
-
-		reading_100k = calculate_reading(read_buf[0], read_buf[1]);
-		//FIXME: write this value to Ostentus here
-		snprintk(msg, sizeof(msg), "%lld.%02lld mA", reading_100k/100, llabs(reading_100k%100));
-		slide_set(adc->ch_num == 0 ? CH0_CURRENT : CH1_CURRENT, msg, strlen(msg));
-		LOG_INF("Current: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
 	}
+
+	adc_data->val1 = (read_buf[0]<<8) | read_buf[1];
+
+	reading_100k = calculate_reading(read_buf[0], read_buf[1]);
+
+	snprintk(msg, sizeof(msg), "%lld.%02lld mA", reading_100k/100, llabs(reading_100k%100));
+	slide_set(adc->ch_num == 0 ? CH0_CURRENT : CH1_CURRENT, msg, strlen(msg));
+	LOG_INF("Current: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
 
 	write_buf[0] = 0x02;
 	err = i2c_write_read(i2c_dev, adc->i2c_addr, write_buf, 1, read_buf, 2);
 	if (err) {
 		LOG_ERR("I2C write-read err: %d", err);
 		return err;
-	} else {
-		adc_data->voltage = (read_buf[0]<<8) | read_buf[1];
-
-		reading_100k = calculate_reading(read_buf[0], read_buf[1]);
-		snprintk(msg, sizeof(msg), "%lld.%02lld V", reading_100k/100000, llabs((reading_100k%100000)/1000));
-		slide_set(adc->ch_num == 0 ? CH0_VOLTAGE : CH1_VOLTAGE, msg, strlen(msg));
-		LOG_INF("Voltage Bus: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
 	}
+
+	adc_data->voltage = (read_buf[0]<<8) | read_buf[1];
+
+	reading_100k = calculate_reading(read_buf[0], read_buf[1]);
+	snprintk(msg, sizeof(msg), "%lld.%02lld V", reading_100k/100000, llabs((reading_100k%100000)/1000));
+	slide_set(adc->ch_num == 0 ? CH0_VOLTAGE : CH1_VOLTAGE, msg, strlen(msg));
+	LOG_INF("Voltage Bus: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
 
 	write_buf[0] = 0x03;
 	err = i2c_write_read(i2c_dev, adc->i2c_addr, write_buf, 1, read_buf, 2);
 	if (err) {
 		LOG_ERR("I2C write-read err: %d", err);
 		return err;
-	} else {
-		adc_data->power = (read_buf[0]<<8) | read_buf[1];
-
-		reading_100k = calculate_reading(read_buf[0], read_buf[1]);
-		snprintk(msg, sizeof(msg), "%lld.%02lld mW", reading_100k/100, llabs(reading_100k%100));
-		slide_set(adc->ch_num == 0 ? CH0_POWER : CH1_POWER, msg, strlen(msg));
-		LOG_INF("Power: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
 	}
+
+	adc_data->power = (read_buf[0]<<8) | read_buf[1];
+
+	reading_100k = calculate_reading(read_buf[0], read_buf[1]);
+	snprintk(msg, sizeof(msg), "%lld.%02lld mW", reading_100k/100, llabs(reading_100k%100));
+	slide_set(adc->ch_num == 0 ? CH0_POWER : CH1_POWER, msg, strlen(msg));
+	LOG_INF("Power: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
 
 	return 0;
 }
 
-static int push_adc_to_golioth(struct mcp3201_data *ch0_data, struct mcp3201_data *ch1_data) {
+static int push_adc_to_golioth(struct mcp3201_data *ch0_data, struct mcp3201_data *ch1_data)
+{
 	int err;
 	char json_buf[128];
 
@@ -206,15 +225,16 @@ static int push_adc_to_golioth(struct mcp3201_data *ch0_data, struct mcp3201_dat
 	return 0;
 }
 
-static int update_ontime(uint16_t adc_value, adc_node_t *ch) {
+static int update_ontime(uint16_t adc_value, adc_node_t *ch)
+{
 	if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
 		if (adc_value <= get_adc_floor(ch->ch_num)) {
 			ch->runtime = 0;
 			ch->laston = -1;
-		}
-		else {
+		} else {
 			int64_t ts = k_uptime_get();
 			int64_t duration;
+
 			if (ch->laston > 0) {
 				duration = ts - ch->laston;
 			} else {
@@ -226,13 +246,13 @@ static int update_ontime(uint16_t adc_value, adc_node_t *ch) {
 		}
 		k_sem_give(&adc_data_sem);
 		return 0;
-	}
-	else {
+	} else {
 		return -EACCES;
 	}
 }
 
-int reset_cumulative_totals(void) {
+int reset_cumulative_totals(void)
+{
 	if (k_sem_take(&adc_data_sem, K_MSEC(5000)) == 0) {
 		k_sem_give(&adc_data_sem);
 		adc_ch0.total_cloud = 0;
@@ -241,15 +261,16 @@ int reset_cumulative_totals(void) {
 		adc_ch1.total_unreported = 0;
 		k_sem_give(&adc_data_sem);
 		return 0;
-	} else {
-		LOG_ERR("Could not reset cumulative values; blocked by semaphore.");
-		return -EACCES;
 	}
+
+	LOG_ERR("Could not reset cumulative values; blocked by semaphore.");
+	return -EACCES;
 }
 
 /* This will be called by the main() loop */
 /* Do all of your work here! */
-void app_work_sensor_read(void) {
+void app_work_sensor_read(void)
+{
 	int err;
 	struct mcp3201_data ch0_data, ch1_data;
 
@@ -312,7 +333,7 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 		adc_ch1.loaded_from_cloud = true;
 
 		LOG_DBG("CH0: %lld, %d\tCH1: %lld, %d", adc_ch0.total_cloud,
-				adc_ch0.loaded_from_cloud,adc_ch1.total_cloud,
+				adc_ch0.loaded_from_cloud, adc_ch1.total_cloud,
 				adc_ch1.loaded_from_cloud);
 
 		k_sem_give(&adc_data_sem);
@@ -320,9 +341,11 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 	return 0;
 }
 
-void app_work_on_connect(void) {
+void app_work_on_connect(void)
+{
 	/* Get cumulative "on" time from Golioth LightDB State */
 	int err;
+
 	err = golioth_lightdb_get_cb(client, ADC_CUMULATIVE_ENDP,
 				     GOLIOTH_CONTENT_FORMAT_APP_CBOR,
 				     get_cumulative_handler, NULL);
@@ -331,7 +354,8 @@ void app_work_on_connect(void) {
 	}
 }
 
-void app_work_init(struct golioth_client* work_client) {
+void app_work_init(struct golioth_client *work_client)
+{
 	client = work_client;
 	k_sem_init(&adc_data_sem, 0, 1);
 
@@ -348,8 +372,7 @@ void app_work_init(struct golioth_client* work_client) {
 	i2c_dev = DEVICE_DT_GET(I2C_DEV_NAME);
 	LOG_DBG("Got i2c_dev");
 	i2c_configure(i2c_dev, I2C_SPEED_SET(I2C_SPEED_STANDARD) | I2C_MODE_CONTROLLER);
-	if (!i2c_dev)
-	{
+	if (!i2c_dev) {
 		LOG_ERR("Cannot get I2C device");
 		return;
 	}

@@ -13,11 +13,13 @@ LOG_MODULE_REGISTER(app_settings, LOG_LEVEL_DBG);
 static int32_t _loop_delay_s = 6;
 static uint16_t _adc_floor[2] = { 0, 0 };
 
-int32_t get_loop_delay_s(void) {
+int32_t get_loop_delay_s(void)
+{
 	return _loop_delay_s;
 }
 
-uint16_t get_adc_floor(uint8_t ch_num) {
+uint16_t get_adc_floor(uint8_t ch_num)
+{
 	if (ch_num >= sizeof(_adc_floor)) {
 		return 0;
 	} else {
@@ -27,8 +29,8 @@ uint16_t get_adc_floor(uint8_t ch_num) {
 
 enum golioth_settings_status on_setting(
 		const char *key,
-		const struct golioth_settings_value *value) {
-
+		const struct golioth_settings_value *value)
+{
 	LOG_DBG("Received setting: key = %s, type = %d", key, value->type);
 	if (strcmp(key, "LOOP_DELAY_S") == 0) {
 		/* This setting is expected to be numeric, return an error if it's not */
@@ -44,8 +46,7 @@ enum golioth_settings_status on_setting(
 		/* Only update if value has changed */
 		if (_loop_delay_s == (int32_t)value->i64) {
 			LOG_DBG("Received LOOP_DELAY_S already matches local value.");
-		}
-		else {
+		} else {
 			_loop_delay_s = (int32_t)value->i64;
 			LOG_INF("Set loop delay to %d seconds", _loop_delay_s);
 
@@ -66,6 +67,7 @@ enum golioth_settings_status on_setting(
 		}
 
 		uint8_t ch_num = 0;
+
 		if (strcmp(key, "ADC_FLOOR_CH1") == 0) {
 			ch_num = 1;
 		}
@@ -73,8 +75,7 @@ enum golioth_settings_status on_setting(
 		/* Only update if value has changed */
 		if (_adc_floor[ch_num] == (int16_t)value->i64) {
 			LOG_DBG("Received ADC_FLOOR_CH%d already matches local value.", ch_num);
-		}
-		else {
+		} else {
 			_adc_floor[ch_num] = (int16_t)value->i64;
 			LOG_INF("Set ADC_FLOOR_CH%d to %d", ch_num, _adc_floor[ch_num]);
 
@@ -87,7 +88,8 @@ enum golioth_settings_status on_setting(
 	return GOLIOTH_SETTINGS_KEY_NOT_RECOGNIZED;
 }
 
-int app_register_settings(struct golioth_client *settings_client) {
+int app_register_settings(struct golioth_client *settings_client)
+{
 	int err = golioth_settings_register_callback(settings_client, on_setting);
 
 	if (err) {

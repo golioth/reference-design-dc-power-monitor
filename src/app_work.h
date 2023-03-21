@@ -31,7 +31,7 @@ typedef struct {
 
 void get_ontime(struct ontime *ot);
 int reset_cumulative_totals(void);
-void app_work_init(struct golioth_client* work_client);
+void app_work_init(struct golioth_client *work_client);
 void app_work_on_connect(void);
 void app_work_sensor_read(void);
 
@@ -40,13 +40,13 @@ void app_work_sensor_read(void);
  * inserting elements with the name of your choice to this enum.
  */
 typedef enum {
-    CH0_CURRENT,
-    CH0_POWER,
-    CH0_VOLTAGE,
-    CH1_CURRENT,
-    CH1_POWER,
-    CH1_VOLTAGE
-}slide_key;
+	CH0_CURRENT,
+	CH0_POWER,
+	CH0_VOLTAGE,
+	CH1_CURRENT,
+	CH1_POWER,
+	CH1_VOLTAGE
+} slide_key;
 
 /* Ostentus slide labels */
 #define CH0_CUR_LABEL "Current ch0"
