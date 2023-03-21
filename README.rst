@@ -1,22 +1,22 @@
-Golioth Reference Design Power Monitor
-######################################
+Golioth AC Power Monitor Reference Design
+#########################################
 
 Overview
 ********
 
-The Golioth IoT Power Monitor reference design includes two channels for
-monitoring electrical equipment. Whether applied to machine tools on a
-production floor, or the electrical circuits in a commercial/residential
-setting, having data about electrical usage is a powerful tool for making
-business decisions.
+The Golioth DC Power Monitor reference design includes two channels for
+monitoring direct-current circuitry. This is most requently needed for battery
+management systems (charging a rack of e-bikes, monitoring battery performance
+in an electric vehicle).
 
 .. image:: img/golioth-power-monitor-with-clamp.jpg
 
-Readings from each channel are passed up to Golioth for tracking usage over
-time. Live "run" time is also reported to show how long a machine has currently
-been running. This data is also used to report the lifetime "run" time of the
-equipment being monitored. The delay between readings and the threshold at
-which the equipment is considered "off" are configurable from the Golioth cloud.
+Current, Power, and Voltage readings from each channel are passed up to Golioth
+for tracking usage over time. Live "run" time is also reported to show how long
+the device being monitored has been drawing current. This data is also used to
+report the lifetime "run" time of the equipment. The delay between readings and
+the threshold at which the equipment is considered "off" are configurable from
+the Golioth cloud.
 
 Local set up
 ************
@@ -30,9 +30,9 @@ Install the Python virtual environment (recommended)
 .. code-block:: console
 
    cd ~
-   mkdir golioth-reference-design-powermonitor
-   python -m venv golioth-reference-design-powermonitor/.venv
-   source golioth-reference-design-powermonitor/.venv/bin/activate
+   mkdir reference-design-dc-power-monitor
+   python -m venv reference-design-dc-power-monitor/.venv
+   source reference-design-dc-power-monitor/.venv/bin/activate
    pip install wheel west
 
 Use ``west`` to initialize and install
@@ -40,8 +40,8 @@ Use ``west`` to initialize and install
 
 .. code-block:: console
 
-   cd ~/golioth-reference-design-powermonitor
-   west init -m git@github.com:golioth/reference-design-powermonitor.git .
+   cd ~/reference-design-dc-power-monitor
+   west init -m git@github.com:golioth/reference-design-dc-power-monitor.git .
    west update
    west zephyr-export
    pip install -r deps/zephyr/scripts/requirements.txt
