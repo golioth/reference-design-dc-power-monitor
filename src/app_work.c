@@ -13,7 +13,7 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
-#include <drivers/spi.h>
+#include <zephyr/drivers/spi.h>
 
 #include "app_work.h"
 #include "app_state.h"
@@ -36,6 +36,10 @@ int64_t calculate_reading(uint8_t upper, uint8_t lower) {
 
 #include "app_work.h"
 #include "libostentus/libostentus.h"
+
+#ifdef CONFIG_ALUDEL_BATTERY_MONITOR
+#include "battery_monitor/battery.h"
+#endif
 
 static struct golioth_client *client;
 
@@ -85,40 +89,12 @@ void get_ontime(struct ontime *ot) {
 }
 
 /* Callback for LightDB Stream */
-static int async_error_handler(struct golioth_req_rsp *rsp) {
+static int async_error_handler(struct golioth_req_rsp *rsp)
+{
 	if (rsp->err) {
 		LOG_ERR("Async task failed: %d", rsp->err);
 		return rsp->err;
 	}
-	return 0;
-}
-
-/*
- * Validate data received from MCP3201
- */
-static int process_adc_reading(uint8_t buf_data[4], struct mcp3201_data *adc_data) {
-	if (buf_data[0] & 1<<5) { return -ENOTSUP; }	/* Missing NULL bit */
-	uint16_t data_msb = 0;
-	uint16_t data_lsb = 0;
-	data_msb = buf_data[0] & 0x1F;
-	data_msb |= (data_msb<<7) | (buf_data[1]>>1);
-	for (uint8_t i=0; i<12; i++) {
-		bool bit_set = false;
-		if (i < 2) {
-			if (buf_data[1] & (1<<(1-i))) { bit_set = true; }
-		}
-		else if (i < 10) {
-			if (buf_data[2] & (1<<(2+7-i))) { bit_set = true; }
-		}
-		else {
-			if (buf_data[3] & (1<<(10+7-i))) { bit_set = true; }
-		}
-
-		if (bit_set) { data_lsb |= (1<<i); }
-	}
-
-	adc_data->val1 = data_msb;
-	adc_data->val2 = data_lsb;
 	return 0;
 }
 
@@ -249,9 +225,20 @@ int reset_cumulative_totals(void) {
 
 /* This will be called by the main() loop */
 /* Do all of your work here! */
-void app_work_sensor_read(void) {
+void app_work_sensor_read(void)
+{
 	int err;
 	struct mcp3201_data ch0_data, ch1_data;
+
+	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR, (
+		   read_and_report_battery();
+		   slide_set(BATTERY_V,
+			     get_batt_v_str(),
+			     strlen(get_batt_v_str()));
+		   slide_set(BATTERY_LVL,
+			     get_batt_lvl_str(),
+			     strlen(get_batt_lvl_str()));
+		   ));
 
 	get_adc_reading(&adc_ch0, &ch0_data);
 	get_adc_reading(&adc_ch1, &ch1_data);
@@ -331,7 +318,8 @@ void app_work_on_connect(void) {
 	}
 }
 
-void app_work_init(struct golioth_client* work_client) {
+void app_work_init(struct golioth_client *work_client)
+{
 	client = work_client;
 	k_sem_init(&adc_data_sem, 0, 1);
 

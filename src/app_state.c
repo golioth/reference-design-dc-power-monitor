@@ -21,7 +21,7 @@ LOG_MODULE_REGISTER(app_state, LOG_LEVEL_DBG);
 #define DEVICE_STATE_FMT_CUMULATIVE LIVE_RUNTIME_FMT CUMULATIVE_RUNTIME_FMT
 #define DESIRED_RESET_KEY "reset_cumulative"
 
-uint32_t _example_int0 = 0;
+uint32_t _example_int0;
 uint32_t _example_int1 = 1;
 
 static struct golioth_client *client;
@@ -40,7 +40,8 @@ static int async_handler(struct golioth_req_rsp *rsp)
 	return 0;
 }
 
-void app_state_init(struct golioth_client* state_client) {
+void app_state_init(struct golioth_client *state_client)
+{
 	client = state_client;
 	app_state_update_actual();
 }
@@ -79,26 +80,32 @@ static int reset_desired(void) {
 
 }
 
-void app_state_observe(void) {
+int app_state_observe(void)
+{
 	int err = golioth_lightdb_observe_cb(client, APP_STATE_DESIRED_ENDP,
 			GOLIOTH_CONTENT_FORMAT_APP_CBOR, app_state_desired_handler, NULL);
 	if (err) {
 	   LOG_WRN("failed to observe lightdb path: %d", err);
 	}
+	return err;
 }
 
-void app_state_update_actual(void) {
+int app_state_update_actual(void)
+{
 	get_ontime(&ot);
 	char sbuf[strlen(DEVICE_STATE_FMT)+8]; /* small bit of extra space */
 	snprintk(sbuf, sizeof(sbuf), DEVICE_STATE_FMT, ot.ch0, ot.ch1);
 
 	int err;
+
 	err = golioth_lightdb_set_cb(client, APP_STATE_ACTUAL_ENDP,
 			GOLIOTH_CONTENT_FORMAT_APP_JSON, sbuf, strlen(sbuf),
 			async_handler, NULL);
+
 	if (err) {
 		LOG_ERR("Unable to write to LightDB State: %d", err);
 	}
+	return err;
 }
 
 int app_state_report_ontime(adc_node_t* ch0, adc_node_t* ch1) {
@@ -192,5 +199,6 @@ int app_state_desired_handler(struct golioth_req_rsp *rsp) {
 			reset_desired();
 		}
 	}
-	return 0;
+
+	return err;
 }
