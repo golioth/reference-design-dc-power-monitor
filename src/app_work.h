@@ -8,7 +8,7 @@
 #define __APP_WORK_H__
 
 #include <stdint.h>
-#include <drivers/spi.h>
+#include <zephyr/drivers/spi.h>
 #include <net/golioth/system_client.h>
 
 extern struct k_sem adc_data_sem;
@@ -31,21 +31,32 @@ typedef struct {
 
 void get_ontime(struct ontime *ot);
 int reset_cumulative_totals(void);
-void app_work_init(struct golioth_client* work_client);
+void app_work_init(struct golioth_client *work_client);
 void app_work_on_connect(void);
 void app_work_sensor_read(void);
+
+#define LABEL_UP_COUNTER "Counter"
+#define LABEL_DN_COUNTER "Anti-counter"
+#define LABEL_BATTERY	 "Battery"
+#define LABEL_FIRMWARE	 "Firmware"
+#define SUMMARY_TITLE	 "Channel 0:"
 
 /**
  * Each Ostentus slide needs a unique key. You may add additional slides by
  * inserting elements with the name of your choice to this enum.
  */
 typedef enum {
-    CH0_CURRENT,
-    CH0_POWER,
-    CH0_VOLTAGE,
-    CH1_CURRENT,
-    CH1_POWER,
-    CH1_VOLTAGE
+	CH0_CURRENT,
+	CH0_POWER,
+	CH0_VOLTAGE,
+	CH1_CURRENT,
+	CH1_POWER,
+	CH1_VOLTAGE,
+#ifdef CONFIG_ALUDEL_BATTERY_MONITOR
+	BATTERY_V,
+	BATTERY_LVL,
+#endif
+	FIRMWARE
 }slide_key;
 
 /* Ostentus slide labels */

@@ -13,7 +13,7 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
-#include <drivers/spi.h>
+#include <zephyr/drivers/spi.h>
 
 #include "app_work.h"
 #include "app_state.h"
@@ -36,6 +36,10 @@ int64_t calculate_reading(uint8_t upper, uint8_t lower) {
 
 #include "app_work.h"
 #include "libostentus/libostentus.h"
+
+#ifdef CONFIG_ALUDEL_BATTERY_MONITOR
+#include "battery_monitor/battery.h"
+#endif
 
 static struct golioth_client *client;
 
@@ -85,7 +89,8 @@ void get_ontime(struct ontime *ot) {
 }
 
 /* Callback for LightDB Stream */
-static int async_error_handler(struct golioth_req_rsp *rsp) {
+static int async_error_handler(struct golioth_req_rsp *rsp)
+{
 	if (rsp->err) {
 		LOG_ERR("Async task failed: %d", rsp->err);
 		return rsp->err;
@@ -139,7 +144,6 @@ static int get_adc_reading(adc_node_t *adc, struct mcp3201_data *adc_data) {
 		adc_data->val1 = (read_buf[0]<<8) | read_buf[1];
 
 		reading_100k = calculate_reading(read_buf[0], read_buf[1]);
-		//FIXME: write this value to Ostentus here
 		snprintk(msg, sizeof(msg), "%lld.%02lld mA", reading_100k/100, llabs(reading_100k%100));
 		slide_set(adc->ch_num == 0 ? CH0_CURRENT : CH1_CURRENT, msg, strlen(msg));
 		LOG_INF("Current: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
@@ -249,7 +253,8 @@ int reset_cumulative_totals(void) {
 
 /* This will be called by the main() loop */
 /* Do all of your work here! */
-void app_work_sensor_read(void) {
+void app_work_sensor_read(void)
+{
 	int err;
 	struct mcp3201_data ch0_data, ch1_data;
 
@@ -331,7 +336,8 @@ void app_work_on_connect(void) {
 	}
 }
 
-void app_work_init(struct golioth_client* work_client) {
+void app_work_init(struct golioth_client *work_client)
+{
 	client = work_client;
 	k_sem_init(&adc_data_sem, 0, 1);
 
@@ -357,4 +363,3 @@ void app_work_init(struct golioth_client* work_client) {
 	/* Semaphores to handle data access */
 	k_sem_give(&adc_data_sem);
 }
-
