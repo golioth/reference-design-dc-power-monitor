@@ -47,7 +47,7 @@ static struct golioth_client *client;
 struct k_sem adc_data_sem;
 
 /* Formatting string for sending sensor JSON to Golioth */
-#define JSON_FMT "{\"ch0\":%d,\"ch1\":%d,\"vol\":{\"ch0\":%d,\"ch1\":%d},\"pow\":{\"ch0\":%d,\"ch1\":%d}}"
+#define JSON_FMT "{\"cur\":{\"ch0\":%d,\"ch1\":%d},\"vol\":{\"ch0\":%d,\"ch1\":%d},\"pow\":{\"ch0\":%d,\"ch1\":%d}}"
 #define ADC_STREAM_ENDP	"sensor"
 #define ADC_CUMULATIVE_ENDP	"state/cumulative"
 
