@@ -13,7 +13,7 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
-#include <drivers/spi.h>
+#include <zephyr/drivers/spi.h>
 
 #include "app_work.h"
 #include "app_state.h"
@@ -26,7 +26,8 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 const struct device *i2c_dev;
 
 /* Convert DC reading to actual value */
-int64_t calculate_reading(uint8_t upper, uint8_t lower) {
+int64_t calculate_reading(uint8_t upper, uint8_t lower)
+{
 	int16_t raw = (upper<<8) | lower;
 	uint64_t big = raw * 125;
 	return big;
@@ -36,6 +37,10 @@ int64_t calculate_reading(uint8_t upper, uint8_t lower) {
 
 #include "app_work.h"
 #include "libostentus/libostentus.h"
+
+#ifdef CONFIG_ALUDEL_BATTERY_MONITOR
+#include "battery_monitor/battery.h"
+#endif
 
 static struct golioth_client *client;
 
@@ -50,7 +55,7 @@ struct k_sem adc_data_sem;
 #define ADC_CH1 1
 
 adc_node_t adc_ch0 = {
-	.i2c = SPI_DT_SPEC_GET(DT_NODELABEL(mcp3201_ch0), SPI_OP, 0),
+	.i2c = SPI_DT_SPEC_GET(DT_NODELABEL(ina260_ch0), SPI_OP, 0),
 	.ch_num = ADC_CH0,
 	.laston = -1,
 	.runtime = 0,
@@ -61,7 +66,7 @@ adc_node_t adc_ch0 = {
 };
 
 adc_node_t adc_ch1 = {
-	.i2c = SPI_DT_SPEC_GET(DT_NODELABEL(mcp3201_ch1), SPI_OP, 0),
+	.i2c = SPI_DT_SPEC_GET(DT_NODELABEL(ina260_ch1), SPI_OP, 0),
 	.ch_num = ADC_CH1,
 	.laston = -1,
 	.runtime = 0,
@@ -72,20 +77,21 @@ adc_node_t adc_ch1 = {
 };
 
 /* Store two values for each ADC reading */
-struct mcp3201_data {
-	uint16_t val1;
-	uint16_t val2;
-	uint16_t voltage;
+struct ina260_data {
+	int16_t current;
+	int16_t voltage;
 	uint16_t power;
 };
 
-void get_ontime(struct ontime *ot) {
+void get_ontime(struct ontime *ot)
+{
 	ot->ch0 = adc_ch0.runtime;
 	ot->ch1 = adc_ch1.runtime;
 }
 
 /* Callback for LightDB Stream */
-static int async_error_handler(struct golioth_req_rsp *rsp) {
+static int async_error_handler(struct golioth_req_rsp *rsp)
+{
 	if (rsp->err) {
 		LOG_ERR("Async task failed: %d", rsp->err);
 		return rsp->err;
@@ -93,36 +99,8 @@ static int async_error_handler(struct golioth_req_rsp *rsp) {
 	return 0;
 }
 
-/*
- * Validate data received from MCP3201
- */
-static int process_adc_reading(uint8_t buf_data[4], struct mcp3201_data *adc_data) {
-	if (buf_data[0] & 1<<5) { return -ENOTSUP; }	/* Missing NULL bit */
-	uint16_t data_msb = 0;
-	uint16_t data_lsb = 0;
-	data_msb = buf_data[0] & 0x1F;
-	data_msb |= (data_msb<<7) | (buf_data[1]>>1);
-	for (uint8_t i=0; i<12; i++) {
-		bool bit_set = false;
-		if (i < 2) {
-			if (buf_data[1] & (1<<(1-i))) { bit_set = true; }
-		}
-		else if (i < 10) {
-			if (buf_data[2] & (1<<(2+7-i))) { bit_set = true; }
-		}
-		else {
-			if (buf_data[3] & (1<<(10+7-i))) { bit_set = true; }
-		}
-
-		if (bit_set) { data_lsb |= (1<<i); }
-	}
-
-	adc_data->val1 = data_msb;
-	adc_data->val2 = data_lsb;
-	return 0;
-}
-
-static int get_adc_reading(adc_node_t *adc, struct mcp3201_data *adc_data) {
+static int get_adc_reading(adc_node_t *adc, struct ina260_data *adc_data)
+{
 	int err;
 
 	uint8_t write_buf[6] = {0};
@@ -136,10 +114,9 @@ static int get_adc_reading(adc_node_t *adc, struct mcp3201_data *adc_data) {
 		LOG_ERR("I2C write-read err: %d", err);
 		return err;
 	} else {
-		adc_data->val1 = (read_buf[0]<<8) | read_buf[1];
+		adc_data->current = (read_buf[0]<<8) | read_buf[1];
 
 		reading_100k = calculate_reading(read_buf[0], read_buf[1]);
-		//FIXME: write this value to Ostentus here
 		snprintk(msg, sizeof(msg), "%lld.%02lld mA", reading_100k/100, llabs(reading_100k%100));
 		slide_set(adc->ch_num == 0 ? CH0_CURRENT : CH1_CURRENT, msg, strlen(msg));
 		LOG_INF("Current: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
@@ -176,7 +153,8 @@ static int get_adc_reading(adc_node_t *adc, struct mcp3201_data *adc_data) {
 	return 0;
 }
 
-static int push_adc_to_golioth(struct mcp3201_data *ch0_data, struct mcp3201_data *ch1_data) {
+static int push_adc_to_golioth(struct ina260_data *ch0_data, struct ina260_data *ch1_data)
+{
 	int err;
 	char json_buf[128];
 
@@ -184,10 +162,10 @@ static int push_adc_to_golioth(struct mcp3201_data *ch0_data, struct mcp3201_dat
 			json_buf,
 			sizeof(json_buf),
 			JSON_FMT,
-			(int16_t)ch0_data->val1,
-			(int16_t)ch1_data->val1,
-			(int16_t)ch0_data->voltage,
-			(int16_t)ch1_data->voltage,
+			ch0_data->current,
+			ch1_data->current,
+			ch0_data->voltage,
+			ch1_data->voltage,
 			ch0_data->power,
 			ch1_data->power
 			);
@@ -206,7 +184,8 @@ static int push_adc_to_golioth(struct mcp3201_data *ch0_data, struct mcp3201_dat
 	return 0;
 }
 
-static int update_ontime(uint16_t adc_value, adc_node_t *ch) {
+static int update_ontime(int16_t adc_value, adc_node_t *ch)
+{
 	if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
 		if (adc_value <= get_adc_floor(ch->ch_num)) {
 			ch->runtime = 0;
@@ -232,7 +211,8 @@ static int update_ontime(uint16_t adc_value, adc_node_t *ch) {
 	}
 }
 
-int reset_cumulative_totals(void) {
+int reset_cumulative_totals(void)
+{
 	if (k_sem_take(&adc_data_sem, K_MSEC(5000)) == 0) {
 		k_sem_give(&adc_data_sem);
 		adc_ch0.total_cloud = 0;
@@ -249,19 +229,20 @@ int reset_cumulative_totals(void) {
 
 /* This will be called by the main() loop */
 /* Do all of your work here! */
-void app_work_sensor_read(void) {
+void app_work_sensor_read(void)
+{
 	int err;
-	struct mcp3201_data ch0_data, ch1_data;
+	struct ina260_data ch0_data, ch1_data;
 
 	get_adc_reading(&adc_ch0, &ch0_data);
 	get_adc_reading(&adc_ch1, &ch1_data);
 
 	/* Calculate the "On" time if readings are not zero */
-	err = update_ontime(ch0_data.val1, &adc_ch0);
+	err = update_ontime(ch0_data.current, &adc_ch0);
 	if (err) {
 		LOG_ERR("Failed up update ontime: %d", err);
 	}
-	err = update_ontime(ch1_data.val1, &adc_ch1);
+	err = update_ontime(ch1_data.current, &adc_ch1);
 	if (err) {
 		LOG_ERR("Failed up update ontime: %d", err);
 	}
@@ -274,6 +255,12 @@ void app_work_sensor_read(void) {
 	 * different.
 	 */
 	push_adc_to_golioth(&ch0_data, &ch1_data);
+
+	/* Take battery reading */
+	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR,
+	   (read_and_report_battery();
+	    slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
+	    slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));));
 }
 
 static int get_cumulative_handler(struct golioth_req_rsp *rsp)
@@ -320,7 +307,8 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 	return 0;
 }
 
-void app_work_on_connect(void) {
+void app_work_on_connect(void)
+{
 	/* Get cumulative "on" time from Golioth LightDB State */
 	int err;
 	err = golioth_lightdb_get_cb(client, ADC_CUMULATIVE_ENDP,
@@ -331,18 +319,19 @@ void app_work_on_connect(void) {
 	}
 }
 
-void app_work_init(struct golioth_client* work_client) {
+void app_work_init(struct golioth_client *work_client)
+{
 	client = work_client;
 	k_sem_init(&adc_data_sem, 0, 1);
 
 
 	LOG_DBG("Setting up current clamp ADCs...");
-	LOG_DBG("mcp3201_ch0.bus = %p", adc_ch0.i2c.bus);
-	LOG_DBG("mcp3201_ch0.config.cs->gpio.port = %p", adc_ch0.i2c.config.cs->gpio.port);
-	LOG_DBG("mcp3201_ch0.config.cs->gpio.pin = %u", adc_ch0.i2c.config.cs->gpio.pin);
-	LOG_DBG("mcp3201_ch1.bus = %p", adc_ch1.i2c.bus);
-	LOG_DBG("mcp3201_ch1.config.cs->gpio.port = %p", adc_ch1.i2c.config.cs->gpio.port);
-	LOG_DBG("mcp3201_ch1.config.cs->gpio.pin = %u", adc_ch1.i2c.config.cs->gpio.pin);
+	LOG_DBG("ina260_ch0.bus = %p", adc_ch0.i2c.bus);
+	LOG_DBG("ina260_ch0.config.cs->gpio.port = %p", adc_ch0.i2c.config.cs->gpio.port);
+	LOG_DBG("ina260_ch0.config.cs->gpio.pin = %u", adc_ch0.i2c.config.cs->gpio.pin);
+	LOG_DBG("ina260_ch1.bus = %p", adc_ch1.i2c.bus);
+	LOG_DBG("ina260_ch1.config.cs->gpio.port = %p", adc_ch1.i2c.config.cs->gpio.port);
+	LOG_DBG("ina260_ch1.config.cs->gpio.pin = %u", adc_ch1.i2c.config.cs->gpio.pin);
 
 	/* Get i2c from devicetree */
 	i2c_dev = DEVICE_DT_GET(I2C_DEV_NAME);
@@ -357,4 +346,3 @@ void app_work_init(struct golioth_client* work_client) {
 	/* Semaphores to handle data access */
 	k_sem_give(&adc_data_sem);
 }
-
