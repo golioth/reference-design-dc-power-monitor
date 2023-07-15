@@ -255,6 +255,12 @@ void app_work_sensor_read(void)
 	 * different.
 	 */
 	push_adc_to_golioth(&ch0_data, &ch1_data);
+
+	/* Take battery reading */
+	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR,
+	   (read_and_report_battery();
+	    slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
+	    slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));));
 }
 
 static int get_cumulative_handler(struct golioth_req_rsp *rsp)
