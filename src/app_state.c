@@ -107,7 +107,8 @@ int app_state_update_actual(void)
 	return err;
 }
 
-int app_state_report_ontime(adc_node_t* ch0, adc_node_t* ch1) {
+int app_state_report_ontime(adc_node_t *ch0, adc_node_t *ch1)
+{
 	int err;
 	char json_buf[128];
 

@@ -22,7 +22,7 @@
 #include <net/golioth/system_client.h>
 
 int32_t get_loop_delay_s(void);
-uint16_t get_adc_floor(uint8_t ch_num);
+int16_t get_adc_floor(uint8_t ch_num);
 int app_settings_init(struct golioth_client *state_client);
 int app_settings_observe(void);
 int app_settings_register(struct golioth_client *settings_client);

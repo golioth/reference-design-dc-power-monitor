@@ -15,14 +15,15 @@ LOG_MODULE_REGISTER(app_settings, LOG_LEVEL_DBG);
 static struct golioth_client *client;
 
 static int32_t _loop_delay_s = 6;
-static uint16_t _adc_floor[2] = { 0, 0 };
+static int16_t _adc_floor[2] = { 0, 0 };
 
 int32_t get_loop_delay_s(void)
 {
 	return _loop_delay_s;
 }
 
-uint16_t get_adc_floor(uint8_t ch_num) {
+int16_t get_adc_floor(uint8_t ch_num)
+{
 	if (ch_num >= sizeof(_adc_floor)) {
 		return 0;
 	} else {
@@ -65,8 +66,8 @@ enum golioth_settings_status on_setting(const char *key, const struct golioth_se
 			return GOLIOTH_SETTINGS_VALUE_FORMAT_NOT_VALID;
 		}
 
-		/* Limit to uint16_t: [0, (2**16)-1] */
-		if (value->i64 < 0 || value->i64 > 65535) {
+		/* Limit to int16_t: [-(2**15), (2**15)-1] */
+		if (value->i64 < -32768 || value->i64 > 32767) {
 			return GOLIOTH_SETTINGS_VALUE_OUTSIDE_RANGE;
 		}
 
