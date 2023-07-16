@@ -2,31 +2,34 @@
    Copyright (c) 2023 Golioth, Inc.
    SPDX-License-Identifier: Apache-2.0
 
-Golioth Reference Design Power Monitor
-######################################
+Golioth DC Power Monitor Reference Design
+#########################################
 
 Overview
 ********
 
-The Golioth IoT Power Monitor reference design includes two channels for
-monitoring electrical equipment. Whether applied to machine tools on a
-production floor, or the electrical circuits in a commercial/residential
-setting, having data about electrical usage is a powerful tool for making
-business decisions.
+The Golioth DC Power Monitor is an IoT reference design that includes two channels for monitoring
+equipment that is powered by Direct Current (DC). This is commonly needed for battery management
+systems like electric cars or bikes. Having reliable data on the state of the charge/discharge
+cycles over a period of time makes it possible to perform predictive maintenance and alert when
+levels are running low.
 
-.. image:: img/golioth-power-monitor-with-clamp.jpg
+.. image:: img/golioth_dc_power_monitor_front.jpg
 
-Readings from each channel are passed up to Golioth for tracking usage over
-time. Live "run" time is also reported to show how long a machine has currently
-been running. This data is also used to report the lifetime "run" time of the
-equipment being monitored. The delay between readings and the threshold at
-which the equipment is considered "off" are configurable from the Golioth cloud.
+This reference design uses two ina260 current/voltage/power measurement chips to measure the
+circuits passing through them. Readings from each channel are passed up to Golioth via a Nordic
+nRF9160 cellular modem for tracking usage over time. Live "run" time is also reported to show how
+long a device has currently been running. This data is also used to report the lifetime "run" time
+of the equipment being monitored. The delay between readings and the threshold at which the
+equipment is considered "off" are configurable from the Golioth cloud.
+
+Learn more about this reference design on `the Golioth DC Power Monitor project page`_.
 
 Local set up
 ************
 
-Do not clone this repo using git. Zephyr's ``west`` meta tool should be used to
-set up your local workspace.
+Do not clone this repo using git. Zephyr's ``west`` meta tool should be used to set up your local
+workspace.
 
 Install the Python virtual environment (recommended)
 ====================================================
@@ -53,16 +56,14 @@ Use ``west`` to initialize and install
 Building the application
 ************************
 
-Build Zephyr sample application for Golioth Aludel-Mini
-(``aludel_mini_v1_sparkfun9160_ns``) from the top level of your project. After a
-successful build you will see a new ``build`` directory. Note that any changes
-(and git commmits) to the project itself will be inside the ``app`` folder. The
-``build`` and ``deps`` directories being one level higher prevents the repo from
-cataloging all of the changes to the dependencies and the build (so no
-``.gitignore`` is needed)
+Build Zephyr sample application for Golioth Aludel-Mini (``aludel_mini_v1_sparkfun9160_ns``) from
+the top level of your project. After a successful build you will see a new ``build`` directory. Note
+that any changes (and git commits) to the project itself will be inside the ``app`` folder. The
+``build`` and ``deps`` directories being one level higher prevents the repo from cataloging all of
+the changes to the dependencies and the build (so no ``.gitignore`` is needed)
 
-During building, replace ``<your.semantic.version>`` to utilize the DFU
-functionality on this Reference Design.
+During building, replace ``<your.semantic.version>`` to utilize the DFU functionality on this
+Reference Design.
 
 .. code-block:: console
 
@@ -98,16 +99,19 @@ The following settings should be set in the Device Settings menu of the
 `Golioth Console`_.
 
 ``LOOP_DELAY_S``
+
    Adjusts the delay between sensor readings. Set to an integer value (seconds).
 
    Default value is ``60`` seconds.
 
 ``ADC_FLOOR_CH0`` (raw ADC value)
+
 ``ADC_FLOOR_CH1`` (raw ADC value)
+
    Filter out noise by adjusting the minimum reading at which a channel will be
    considered "on".
 
-   Defualt values are ``0``
+   Default values are ``0``
 
 Remote Procedure Call (RPC) Service
 ===================================
@@ -139,31 +143,62 @@ LightDB State and LightDB Stream data
 Time-Series Data (LightDB Stream)
 ---------------------------------
 
-An upcounting timer is periodicaly sent to the ``sensor/counter`` endpoint of the
-LightDB Stream service to simulate sensor data. If your board includes a
-battery, voltage and level readings will be sent to the ``battery`` endpoint.
+Current, Voltage, and Power data for both channels are reported as time-series data on the
+``sensor`` endpoint. These readings can each be multiplied by 0.00125 to convert the values to Amps,
+Volts, and Watts.
+
+.. code-block:: json
+
+   {
+     "sensor": {
+       "cur": {
+          "ch0": 1,
+          "ch1": 292
+       },
+       "pow": {
+         "ch0": 0,
+         "ch1": 187
+       },
+       "vol": {
+         "ch0": 4106,
+         "ch1": 4110
+       }
+     }
+   }
+
+If your board includes a battery, voltage and level readings will be sent to the ``battery``
+endpoint.
 
 Stateful Data (LightDB State)
 -----------------------------
 
-The concept of Digital Twin is demonstrated with the LightDB State
-``example_int0`` and ``example_int1`` variables that are members of the ``desired``
-and ``actual`` endpoints.
+The concept of Digital Twin is demonstrated with the LightDB State via the ``desired`` and
+``actual`` endpoints.
 
-* ``desired`` values may be changed from the cloud side. The device will recognize
-  these, validate them for [0..65535] bounding, and then reset these endpoints
-  to ``-1``
+.. code-block:: json
 
-* ``actual`` values will be updated by the device whenever a valid value is
-  received from the ``desired`` endpoints. The cloud may read the ``actual``
-  endpoints to determine device status, but only the device should ever write to
-  the ``actual`` endpoints.
+   {
+     "desired": {
+       "reset_cumulative": false
+     },
+     "state": {
+       "cumulative": {
+         "ch0": 138141,
+         "ch1": 1913952
+       },
+       "live_runtime": {
+         "ch0": 0,
+         "ch1": 913826
+       }
+     }
+   }
 
-Further Information in Header Files
-===================================
+* ``desired.reset_cumulative`` values may be changed from the cloud side. The device will recognize
+  when this endpoint is set to ``true``, clearing the stored ``cumulative`` values and writing the
+  ``reset_cumulative`` value to ``false`` to indicate the operation was completed.
 
-Please refer to the comments in each header file for a service-by-service
-explanation of this template.
+* ``actual`` values will be updated by the device. The cloud may read the ``actual`` endpoints to
+  determine device status, but only the device should ever write to the ``actual`` endpoints.
 
 Hardware Variations
 *******************
@@ -193,33 +228,7 @@ from ``west.yml`` and remove the includes/function calls from the C code.
 * `libostentus`_ is a helper library for controlling the Ostentus ePaper
   faceplate
 
-Using this template to start a new project
-******************************************
-
-Fork this template to create your own Reference Design. After checking out your fork, we recommend
-the following workflow to pull in future changes:
-
-* Setup
-  * Create a ``template`` remote based on the Reference Design Template repository
-* Merge in template changes
-  * Fetch template changes and tags
-  * Merge template release tag into your ``main`` (or other branch)
-  * Resolve merge conflicts (if any) and commit to your repository
-
-.. code-block:: console
-   # Setup
-   git remote add template https://github.com/golioth/reference-design-template.git
-   git fetch template --tags
-
-   # Merge in template changes
-   git fetch template --tags
-   git checkout your_local_branch
-   git merge template_v1.0.0
-
-   # Resolve merge conflicts if necessry
-   git add resolved_files
-   git commit
-
+.. _the Golioth DC Power Monitor project page: https://projects.golioth.io/reference-designs/dc-power-monitor/
 .. _Golioth Console: https://console.golioth.io
 .. _Nordic nRF9160 DK: https://www.nordicsemi.com/Products/Development-hardware/nrf9160-dk
 .. _golioth-zephyr-boards: https://github.com/golioth/golioth-zephyr-boards
