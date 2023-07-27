@@ -19,15 +19,21 @@ struct ontime {
 };
 
 typedef struct {
-	const struct spi_dt_spec i2c;
+	const struct  device *const dev;
 	uint8_t ch_num;
 	int64_t laston;
 	uint64_t runtime;
 	uint64_t total_unreported;
 	uint64_t total_cloud;
 	bool loaded_from_cloud;
-	uint8_t i2c_addr;
+	bool device_ready;
 } adc_node_t;
+
+typedef struct {
+	int16_t current;
+	int16_t voltage;
+	uint16_t power;
+} raw_values_t;
 
 void get_ontime(struct ontime *ot);
 int reset_cumulative_totals(void);

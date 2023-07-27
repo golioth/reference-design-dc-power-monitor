@@ -2,7 +2,7 @@
 	zephyr,concat-buf-size = <48>;
 
 	ina260_ch0: ina260@40 {
-		compatible = "vnd,spi-device";
+		compatible = "ti,ina260";
 		reg = <0x40>;
 	};
 	ina260_ch1: ina260@41 {

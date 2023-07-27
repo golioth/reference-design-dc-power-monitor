@@ -22,8 +22,8 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 #include <qcbor/qcbor_decode.h>
 #include <qcbor/qcbor_spiffy_decode.h>
 
-#define I2C_DEV_NAME DT_ALIAS(click_i2c)
-const struct device *i2c_dev;
+/* FIXME: this is an awkward include */
+#include "../drivers/sensor/ina260/ina260.h"
 
 /* Convert DC reading to actual value */
 int64_t calculate_reading(uint8_t upper, uint8_t lower)
@@ -55,32 +55,25 @@ struct k_sem adc_data_sem;
 #define ADC_CH1 1
 
 adc_node_t adc_ch0 = {
-	.i2c = SPI_DT_SPEC_GET(DT_NODELABEL(ina260_ch0), SPI_OP, 0),
+	.dev = DEVICE_DT_GET(DT_NODELABEL(ina260_ch0)),
 	.ch_num = ADC_CH0,
 	.laston = -1,
 	.runtime = 0,
 	.total_unreported = 0,
 	.total_cloud = 0,
 	.loaded_from_cloud = false,
-	.i2c_addr = 0x40
+	.device_ready = false
 };
 
 adc_node_t adc_ch1 = {
-	.i2c = SPI_DT_SPEC_GET(DT_NODELABEL(ina260_ch1), SPI_OP, 0),
+	.dev = DEVICE_DT_GET(DT_NODELABEL(ina260_ch1)),
 	.ch_num = ADC_CH1,
 	.laston = -1,
 	.runtime = 0,
 	.total_unreported = 0,
 	.total_cloud = 0,
 	.loaded_from_cloud = false,
-	.i2c_addr = 0x41
-};
-
-/* Store two values for each ADC reading */
-struct ina260_data {
-	int16_t current;
-	int16_t voltage;
-	uint16_t power;
+	.device_ready = false
 };
 
 void get_ontime(struct ontime *ot)
@@ -99,75 +92,148 @@ static int async_error_handler(struct golioth_req_rsp *rsp)
 	return 0;
 }
 
-static int get_adc_reading(adc_node_t *adc, struct ina260_data *adc_data)
+static int get_adc_reading(adc_node_t *adc)
 {
 	int err;
 
-	uint8_t write_buf[6] = {0};
-	uint8_t read_buf[6] = {0};
-	int64_t reading_100k;
-	char msg[32] = { '\0' };
-
-	write_buf[0] = 0x01;
-	err = i2c_write_read(i2c_dev, adc->i2c_addr, write_buf, 1, read_buf, 2);
+	err = sensor_sample_fetch(adc->dev);
 	if (err) {
-		LOG_ERR("I2C write-read err: %d", err);
+		LOG_ERR("Error fetching sensor values from %s: %d", adc->dev->name, err);
+		adc->device_ready = false;
 		return err;
-	} else {
-		adc_data->current = (read_buf[0]<<8) | read_buf[1];
-
-		reading_100k = calculate_reading(read_buf[0], read_buf[1]);
-		snprintk(msg, sizeof(msg), "%lld.%02lld mA", reading_100k/100, llabs(reading_100k%100));
-		slide_set(adc->ch_num == 0 ? CH0_CURRENT : CH1_CURRENT, msg, strlen(msg));
-		LOG_INF("Current: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
 	}
 
-	write_buf[0] = 0x02;
-	err = i2c_write_read(i2c_dev, adc->i2c_addr, write_buf, 1, read_buf, 2);
-	if (err) {
-		LOG_ERR("I2C write-read err: %d", err);
-		return err;
-	} else {
-		adc_data->voltage = (read_buf[0]<<8) | read_buf[1];
+	adc->device_ready = true;
+	return 0;
+}
 
-		reading_100k = calculate_reading(read_buf[0], read_buf[1]);
-		snprintk(msg, sizeof(msg), "%lld.%02lld V", reading_100k/100000, llabs((reading_100k%100000)/1000));
-		slide_set(adc->ch_num == 0 ? CH0_VOLTAGE : CH1_VOLTAGE, msg, strlen(msg));
-		LOG_INF("Voltage Bus: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
+static int log_sensor_values(adc_node_t *sensor, bool get_new_reading)
+{
+	int err;
+
+	if (get_new_reading) {
+		err = get_adc_reading(sensor);
+		if (err) {
+			return err;
+		}
 	}
 
-	write_buf[0] = 0x03;
-	err = i2c_write_read(i2c_dev, adc->i2c_addr, write_buf, 1, read_buf, 2);
-	if (err) {
-		LOG_ERR("I2C write-read err: %d", err);
-		return err;
-	} else {
-		adc_data->power = (read_buf[0]<<8) | read_buf[1];
+	if (sensor->device_ready) {
+		struct sensor_value cur, pow, vol;
 
-		reading_100k = calculate_reading(read_buf[0], read_buf[1]);
-		snprintk(msg, sizeof(msg), "%lld.%02lld mW", reading_100k/100, llabs(reading_100k%100));
-		slide_set(adc->ch_num == 0 ? CH0_POWER : CH1_POWER, msg, strlen(msg));
-		LOG_INF("Power: %02X%02X -- %s", read_buf[0], read_buf[1], msg);
+		sensor_channel_get(sensor->dev,
+				   (enum sensor_channel)SENSOR_CHAN_VOLTAGE,
+				   &vol);
+		sensor_channel_get(sensor->dev,
+				   (enum sensor_channel)SENSOR_CHAN_CURRENT,
+				   &cur);
+		sensor_channel_get(sensor->dev,
+				   (enum sensor_channel)SENSOR_CHAN_POWER,
+				   &pow);
+
+		LOG_INF("Device: %s, %f V, %f A, %f W",
+			sensor->dev->name,
+			sensor_value_to_double(&vol),
+			sensor_value_to_double(&cur),
+			sensor_value_to_double(&pow)
+			);
+	} else {
+		return -ENODATA;
 	}
 
 	return 0;
 }
 
-static int push_adc_to_golioth(struct ina260_data *ch0_data, struct ina260_data *ch1_data)
+static int get_raw_sensor_values(adc_node_t *sensor, raw_values_t *values, bool get_new_reading)
+{
+	int err;
+
+	if (get_new_reading) {
+		err = get_adc_reading(sensor);
+		if (err) {
+			return err;
+		}
+	}
+
+	if (sensor->device_ready) {
+		struct sensor_value raw;
+
+		sensor_channel_get(sensor->dev,
+				   (enum sensor_channel)SENSOR_CHAN_INA260_VOLTAGE_RAW,
+				   &raw);
+		values->voltage = raw.val1;
+
+		sensor_channel_get(sensor->dev,
+				   (enum sensor_channel)SENSOR_CHAN_INA260_CURRENT_RAW,
+				   &raw);
+		values->current = raw.val1;
+
+		sensor_channel_get(sensor->dev,
+				   (enum sensor_channel)SENSOR_CHAN_INA260_POWER_RAW,
+				   &raw);
+		values->power = raw.val1;
+
+	} else {
+		return -ENODATA;
+	}
+
+	return 0;
+}
+
+static int push_adc_to_golioth(adc_node_t *ch0_data, adc_node_t *ch1_data, bool get_new_reading)
 {
 	int err;
 	char json_buf[128];
+	struct sensor_value cur0_raw, pow0_raw, vol0_raw;
+	struct sensor_value cur1_raw, pow1_raw, vol1_raw;
+
+	if (get_new_reading) {
+		get_adc_reading(ch0_data);
+		get_adc_reading(ch1_data);
+	}
+
+	if (ch0_data->device_ready) {
+		sensor_channel_get(ch0_data->dev,
+				   (enum sensor_channel)SENSOR_CHAN_INA260_VOLTAGE_RAW,
+				   &vol0_raw);
+		sensor_channel_get(ch0_data->dev,
+				   (enum sensor_channel)SENSOR_CHAN_INA260_CURRENT_RAW,
+				   &cur0_raw);
+		sensor_channel_get(ch0_data->dev,
+				   (enum sensor_channel)SENSOR_CHAN_INA260_POWER_RAW,
+				   &pow0_raw);
+	} else {
+		cur0_raw.val1 = 0;
+		pow0_raw.val1 = 0;
+		vol0_raw.val1 = 0;
+	}
+
+	if (ch1_data->device_ready) {
+		sensor_channel_get(ch1_data->dev,
+				   (enum sensor_channel)SENSOR_CHAN_INA260_VOLTAGE_RAW,
+				   &vol1_raw);
+		sensor_channel_get(ch1_data->dev,
+				   (enum sensor_channel)SENSOR_CHAN_INA260_CURRENT_RAW,
+				   &cur1_raw);
+		sensor_channel_get(ch1_data->dev,
+				   (enum sensor_channel)SENSOR_CHAN_INA260_POWER_RAW,
+				   &pow1_raw);
+	} else {
+		cur1_raw.val1 = 0;
+		pow1_raw.val1 = 0;
+		vol1_raw.val1 = 0;
+	}
 
 	snprintk(
 			json_buf,
 			sizeof(json_buf),
 			JSON_FMT,
-			ch0_data->current,
-			ch1_data->current,
-			ch0_data->voltage,
-			ch1_data->voltage,
-			ch0_data->power,
-			ch1_data->power
+			cur0_raw.val1,
+			cur1_raw.val1,
+			vol0_raw.val1,
+			vol1_raw.val1,
+			pow0_raw.val1,
+			pow1_raw.val1
 			);
 
 	err = golioth_stream_push_cb(client, ADC_STREAM_ENDP,
@@ -232,17 +298,30 @@ int reset_cumulative_totals(void)
 void app_work_sensor_read(void)
 {
 	int err;
-	struct ina260_data ch0_data, ch1_data;
 
-	get_adc_reading(&adc_ch0, &ch0_data);
-	get_adc_reading(&adc_ch1, &ch1_data);
+	/* Fetch new readings from sensors */
+	get_adc_reading(&adc_ch0);
+	get_adc_reading(&adc_ch1);
+
+	/* Log the readings */
+	log_sensor_values(&adc_ch0, false);
+	log_sensor_values(&adc_ch1, false);
+
+	struct sensor_value cur0_raw, cur1_raw;
+
+	sensor_channel_get(adc_ch0.dev,
+			   (enum sensor_channel)SENSOR_CHAN_INA260_CURRENT_RAW,
+			   &cur0_raw);
+	sensor_channel_get(adc_ch1.dev,
+			   (enum sensor_channel)SENSOR_CHAN_INA260_CURRENT_RAW,
+			   &cur1_raw);
 
 	/* Calculate the "On" time if readings are not zero */
-	err = update_ontime(ch0_data.current, &adc_ch0);
+	err = update_ontime((int16_t)cur0_raw.val1, &adc_ch0);
 	if (err) {
 		LOG_ERR("Failed up update ontime: %d", err);
 	}
-	err = update_ontime(ch1_data.current, &adc_ch1);
+	err = update_ontime((int16_t)cur0_raw.val1, &adc_ch1);
 	if (err) {
 		LOG_ERR("Failed up update ontime: %d", err);
 	}
@@ -254,7 +333,7 @@ void app_work_sensor_read(void)
 	 * channel as it's unlikely the two readings will be substantially
 	 * different.
 	 */
-	push_adc_to_golioth(&ch0_data, &ch1_data);
+	push_adc_to_golioth(&adc_ch0, &adc_ch1, false);
 
 	/* Take battery reading */
 	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR,
@@ -324,23 +403,12 @@ void app_work_init(struct golioth_client *work_client)
 	client = work_client;
 	k_sem_init(&adc_data_sem, 0, 1);
 
+	if (device_is_ready(adc_ch0.dev)) {
+		get_adc_reading(&adc_ch0);
+	}
 
-	LOG_DBG("Setting up current clamp ADCs...");
-	LOG_DBG("ina260_ch0.bus = %p", adc_ch0.i2c.bus);
-	LOG_DBG("ina260_ch0.config.cs->gpio.port = %p", adc_ch0.i2c.config.cs->gpio.port);
-	LOG_DBG("ina260_ch0.config.cs->gpio.pin = %u", adc_ch0.i2c.config.cs->gpio.pin);
-	LOG_DBG("ina260_ch1.bus = %p", adc_ch1.i2c.bus);
-	LOG_DBG("ina260_ch1.config.cs->gpio.port = %p", adc_ch1.i2c.config.cs->gpio.port);
-	LOG_DBG("ina260_ch1.config.cs->gpio.pin = %u", adc_ch1.i2c.config.cs->gpio.pin);
-
-	/* Get i2c from devicetree */
-	i2c_dev = DEVICE_DT_GET(I2C_DEV_NAME);
-	LOG_DBG("Got i2c_dev");
-	i2c_configure(i2c_dev, I2C_SPEED_SET(I2C_SPEED_STANDARD) | I2C_MODE_CONTROLLER);
-	if (!i2c_dev)
-	{
-		LOG_ERR("Cannot get I2C device");
-		return;
+	if (device_is_ready(adc_ch1.dev)) {
+		get_adc_reading(&adc_ch1);
 	}
 
 	/* Semaphores to handle data access */
