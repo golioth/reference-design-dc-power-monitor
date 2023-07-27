@@ -15,6 +15,11 @@
 &arduino_i2c {
 	/* Needed for I2C writes used by libostentus */
 	zephyr,concat-buf-size = <48>;
+
+	ina260_ch0: ina260@40 {
+		compatible = "ti,ina260";
+		reg = <0x40>;
+	};
 };
 
 &pinctrl {
