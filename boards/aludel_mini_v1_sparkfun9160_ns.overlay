@@ -1,18 +1,12 @@
-&spi2 {
-	ina260_ch0: ina260@0 {
-		compatible = "vnd,spi-device";
-		reg = <0>;
-		spi-max-frequency = <1600000>;
-		label = "ina260_ch0";
-	};
-	ina260_ch1: ina260@1 {
-		compatible = "vnd,spi-device";
-		reg = <1>;
-		spi-max-frequency = <1600000>;
-		label = "ina260_ch1";
-	};
-};
-
 &i2c1 {
 	zephyr,concat-buf-size = <48>;
+
+	ina260_ch0: ina260@40 {
+		compatible = "vnd,spi-device";
+		reg = <0x40>;
+	};
+	ina260_ch1: ina260@41 {
+		compatible = "ti,ina260";
+		reg = <0x41>;
+	};
 };
