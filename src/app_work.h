@@ -33,7 +33,7 @@ typedef struct {
 	int16_t current;
 	int16_t voltage;
 	uint16_t power;
-} raw_values_t;
+} vcp_raw_t;
 
 void get_ontime(struct ontime *ot);
 int reset_cumulative_totals(void);
