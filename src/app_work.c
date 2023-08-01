@@ -183,59 +183,51 @@ static int get_raw_sensor_values(adc_node_t *sensor, vcp_raw_t *values, bool get
 	return 0;
 }
 
-static int push_adc_to_golioth(adc_node_t *ch0_data, adc_node_t *ch1_data, bool get_new_reading)
+static int push_dual_adc_to_golioth(vcp_raw_t *ch0_raw, vcp_raw_t *ch1_raw)
 {
 	int err;
 	char json_buf[128];
-	vcp_raw_t ch0_raw, ch1_raw;
-	int ch0_invalid, ch1_invalid;
 
-	char *single_ch_path;
-	vcp_raw_t *single_ch_data;
+	snprintk(json_buf,
+		 sizeof(json_buf),
+		 JSON_FMT,
+		 ch0_raw->current,
+		 ch1_raw->current,
+		 ch0_raw->voltage,
+		 ch1_raw->voltage,
+		 ch0_raw->power,
+		 ch1_raw->power
+		 );
 
-	if (get_new_reading) {
-		get_adc_reading(ch0_data);
-		get_adc_reading(ch1_data);
+	err = golioth_stream_push_cb(client, ADC_STREAM_ENDP,
+			GOLIOTH_CONTENT_FORMAT_APP_JSON, json_buf, strlen(json_buf),
+			async_error_handler, NULL);
+
+	if (err) {
+		LOG_ERR("Failed to send sensor data to Golioth: %d", err);
+		return err;
 	}
 
-	ch0_invalid = get_raw_sensor_values(ch0_data, &ch0_raw, false);
-	ch1_invalid = get_raw_sensor_values(ch1_data, &ch1_raw, false);
+	app_state_report_ontime(&adc_ch0, &adc_ch1);
 
-	if (ch0_invalid && ch1_invalid) {
-		LOG_WRN("Data not available from any sensor");
-		return -ENODATA;
-	}
+	return 0;
+}
 
-	if (!ch0_invalid && !ch1_invalid) {
-		snprintk(json_buf,
-			 sizeof(json_buf),
-			 JSON_FMT,
-			 ch0_raw.current,
-			 ch1_raw.current,
-			 ch0_raw.voltage,
-			 ch1_raw.voltage,
-			 ch0_raw.power,
-			 ch1_raw.power
-			 );
-	} else {
-		if (!ch0_invalid) {
-			single_ch_data = &ch0_raw;
-			single_ch_path = CH0_PATH;
-		} else {
-			single_ch_data = &ch1_raw;
-			single_ch_path = CH1_PATH;
-		}
-		snprintk(json_buf,
-			 sizeof(json_buf),
-			 JSON_FMT_SINGLE,
-			 single_ch_path,
-			 single_ch_data->current,
-			 single_ch_path,
-			 single_ch_data->voltage,
-			 single_ch_path,
-			 single_ch_data->power
-			 );
-	}
+static int push_single_adc_to_golioth(vcp_raw_t *single_ch_data, char *single_ch_path)
+{
+	int err;
+	char json_buf[128];
+
+	snprintk(json_buf,
+		 sizeof(json_buf),
+		 JSON_FMT_SINGLE,
+		 single_ch_path,
+		 single_ch_data->current,
+		 single_ch_path,
+		 single_ch_data->voltage,
+		 single_ch_path,
+		 single_ch_data->power
+		 );
 
 	err = golioth_stream_push_cb(client, ADC_STREAM_ENDP,
 			GOLIOTH_CONTENT_FORMAT_APP_JSON, json_buf, strlen(json_buf),
@@ -299,48 +291,55 @@ int reset_cumulative_totals(void)
 void app_work_sensor_read(void)
 {
 	int err;
-
-	/* Fetch new readings from sensors */
-	get_adc_reading(&adc_ch0);
-	get_adc_reading(&adc_ch1);
-
-	/* Log the readings */
-	log_sensor_values(&adc_ch0, false);
-	log_sensor_values(&adc_ch1, false);
-
-	struct sensor_value cur0_raw, cur1_raw;
-
-	sensor_channel_get(adc_ch0.dev,
-			   (enum sensor_channel)SENSOR_CHAN_INA260_CURRENT_RAW,
-			   &cur0_raw);
-	sensor_channel_get(adc_ch1.dev,
-			   (enum sensor_channel)SENSOR_CHAN_INA260_CURRENT_RAW,
-			   &cur1_raw);
-
-	/* Calculate the "On" time if readings are not zero */
-	err = update_ontime((int16_t)cur0_raw.val1, &adc_ch0);
-	if (err) {
-		LOG_ERR("Failed up update ontime: %d", err);
-	}
-	err = update_ontime((int16_t)cur0_raw.val1, &adc_ch1);
-	if (err) {
-		LOG_ERR("Failed up update ontime: %d", err);
-	}
-	LOG_DBG("Ontime:\t(ch0): %lld\t(ch1): %lld", adc_ch0.runtime, adc_ch1.runtime);
-
-	/* Send sensor data to Golioth */
-
-	/* Two values were read for each sensor but we'll record only on form each
-	 * channel as it's unlikely the two readings will be substantially
-	 * different.
-	 */
-	push_adc_to_golioth(&adc_ch0, &adc_ch1, false);
+	vcp_raw_t ch0_raw, ch1_raw;
+	int ch0_invalid, ch1_invalid;
 
 	/* Take battery reading */
 	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR,
 	   (read_and_report_battery();
 	    slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
 	    slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));));
+
+	/* Fetch new readings from sensors */
+	get_adc_reading(&adc_ch0);
+	get_adc_reading(&adc_ch1);
+
+	/* Get raw readings from the sensor api */
+	ch0_invalid = get_raw_sensor_values(&adc_ch0, &ch0_raw, false);
+	ch1_invalid = get_raw_sensor_values(&adc_ch1, &ch1_raw, false);
+
+	if (ch0_invalid && ch1_invalid) {
+		LOG_WRN("Data not available from any sensor");
+		return;
+	}
+
+	/* Log the readings */
+	log_sensor_values(&adc_ch0, false);
+	log_sensor_values(&adc_ch1, false);
+
+	/* Calculate the "On" time if readings are not zero */
+	if (!ch0_invalid) {
+		err = update_ontime(ch0_raw.current, &adc_ch0);
+		if (err) {
+			LOG_ERR("Failed up update ontime: %d", err);
+		}
+	}
+	if (!ch1_invalid) {
+		err = update_ontime(ch1_raw.current, &adc_ch1);
+		if (err) {
+			LOG_ERR("Failed up update ontime: %d", err);
+		}
+	}
+	LOG_DBG("Ontime:\t(ch0): %lld\t(ch1): %lld", adc_ch0.runtime, adc_ch1.runtime);
+
+	/* Send sensor data to Golioth */
+	if (!ch0_invalid && !ch1_invalid) {
+		push_dual_adc_to_golioth(&ch0_raw, &ch1_raw);
+	} else if (!ch0_invalid) {
+		push_single_adc_to_golioth(&ch0_raw, CH0_PATH);
+	} else if (!ch1_invalid) {
+		push_single_adc_to_golioth(&ch1_raw, CH1_PATH);
+	}
 }
 
 static int get_cumulative_handler(struct golioth_req_rsp *rsp)
