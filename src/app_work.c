@@ -48,6 +48,9 @@ struct k_sem adc_data_sem;
 
 /* Formatting string for sending sensor JSON to Golioth */
 #define JSON_FMT "{\"cur\":{\"ch0\":%d,\"ch1\":%d},\"vol\":{\"ch0\":%d,\"ch1\":%d},\"pow\":{\"ch0\":%d,\"ch1\":%d}}"
+#define JSON_FMT_SINGLE "{\"cur\":{\"%s\":%d},\"vol\":{\"%s\":%d},\"pow\":{\"%s\":%d}}"
+#define CH0_PATH "ch0"
+#define CH1_PATH "ch1"
 #define ADC_STREAM_ENDP	"sensor"
 #define ADC_CUMULATIVE_ENDP	"state/cumulative"
 
@@ -126,7 +129,7 @@ static int log_sensor_values(adc_node_t *sensor, bool get_new_reading)
 				   &vol);
 		sensor_channel_get(sensor->dev,
 				   (enum sensor_channel)SENSOR_CHAN_CURRENT,
-				   &cur);
+					   &cur);
 		sensor_channel_get(sensor->dev,
 				   (enum sensor_channel)SENSOR_CHAN_POWER,
 				   &pow);
@@ -144,7 +147,7 @@ static int log_sensor_values(adc_node_t *sensor, bool get_new_reading)
 	return 0;
 }
 
-static int get_raw_sensor_values(adc_node_t *sensor, raw_values_t *values, bool get_new_reading)
+static int get_raw_sensor_values(adc_node_t *sensor, vcp_raw_t *values, bool get_new_reading)
 {
 	int err;
 
@@ -184,57 +187,55 @@ static int push_adc_to_golioth(adc_node_t *ch0_data, adc_node_t *ch1_data, bool 
 {
 	int err;
 	char json_buf[128];
-	struct sensor_value cur0_raw, pow0_raw, vol0_raw;
-	struct sensor_value cur1_raw, pow1_raw, vol1_raw;
+	vcp_raw_t ch0_raw, ch1_raw;
+	int ch0_invalid, ch1_invalid;
+
+	char *single_ch_path;
+	vcp_raw_t *single_ch_data;
 
 	if (get_new_reading) {
 		get_adc_reading(ch0_data);
 		get_adc_reading(ch1_data);
 	}
 
-	if (ch0_data->device_ready) {
-		sensor_channel_get(ch0_data->dev,
-				   (enum sensor_channel)SENSOR_CHAN_INA260_VOLTAGE_RAW,
-				   &vol0_raw);
-		sensor_channel_get(ch0_data->dev,
-				   (enum sensor_channel)SENSOR_CHAN_INA260_CURRENT_RAW,
-				   &cur0_raw);
-		sensor_channel_get(ch0_data->dev,
-				   (enum sensor_channel)SENSOR_CHAN_INA260_POWER_RAW,
-				   &pow0_raw);
-	} else {
-		cur0_raw.val1 = 0;
-		pow0_raw.val1 = 0;
-		vol0_raw.val1 = 0;
+	ch0_invalid = get_raw_sensor_values(ch0_data, &ch0_raw, false);
+	ch1_invalid = get_raw_sensor_values(ch1_data, &ch1_raw, false);
+
+	if (ch0_invalid && ch1_invalid) {
+		LOG_WRN("Data not available from any sensor");
+		return -ENODATA;
 	}
 
-	if (ch1_data->device_ready) {
-		sensor_channel_get(ch1_data->dev,
-				   (enum sensor_channel)SENSOR_CHAN_INA260_VOLTAGE_RAW,
-				   &vol1_raw);
-		sensor_channel_get(ch1_data->dev,
-				   (enum sensor_channel)SENSOR_CHAN_INA260_CURRENT_RAW,
-				   &cur1_raw);
-		sensor_channel_get(ch1_data->dev,
-				   (enum sensor_channel)SENSOR_CHAN_INA260_POWER_RAW,
-				   &pow1_raw);
+	if (!ch0_invalid && !ch1_invalid) {
+		snprintk(json_buf,
+			 sizeof(json_buf),
+			 JSON_FMT,
+			 ch0_raw.current,
+			 ch1_raw.current,
+			 ch0_raw.voltage,
+			 ch1_raw.voltage,
+			 ch0_raw.power,
+			 ch1_raw.power
+			 );
 	} else {
-		cur1_raw.val1 = 0;
-		pow1_raw.val1 = 0;
-		vol1_raw.val1 = 0;
+		if (!ch0_invalid) {
+			single_ch_data = &ch0_raw;
+			single_ch_path = CH0_PATH;
+		} else {
+			single_ch_data = &ch1_raw;
+			single_ch_path = CH1_PATH;
+		}
+		snprintk(json_buf,
+			 sizeof(json_buf),
+			 JSON_FMT_SINGLE,
+			 single_ch_path,
+			 single_ch_data->current,
+			 single_ch_path,
+			 single_ch_data->voltage,
+			 single_ch_path,
+			 single_ch_data->power
+			 );
 	}
-
-	snprintk(
-			json_buf,
-			sizeof(json_buf),
-			JSON_FMT,
-			cur0_raw.val1,
-			cur1_raw.val1,
-			vol0_raw.val1,
-			vol1_raw.val1,
-			pow0_raw.val1,
-			pow1_raw.val1
-			);
 
 	err = golioth_stream_push_cb(client, ADC_STREAM_ENDP,
 			GOLIOTH_CONTENT_FORMAT_APP_JSON, json_buf, strlen(json_buf),
