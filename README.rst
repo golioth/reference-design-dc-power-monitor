@@ -34,7 +34,7 @@ workspace.
 Install the Python virtual environment (recommended)
 ====================================================
 
-.. code-block:: console
+.. code-block:: shell
 
    cd ~
    mkdir golioth-reference-design-powermonitor
@@ -45,7 +45,7 @@ Install the Python virtual environment (recommended)
 Use ``west`` to initialize and install
 ======================================
 
-.. code-block:: console
+.. code-block:: shell
 
    cd ~/golioth-reference-design-powermonitor
    west init -m git@github.com:golioth/reference-design-powermonitor.git .
@@ -56,16 +56,18 @@ Use ``west`` to initialize and install
 Building the application
 ************************
 
-Build Zephyr sample application for Golioth Aludel-Mini (``aludel_mini_v1_sparkfun9160_ns``) from
-the top level of your project. After a successful build you will see a new ``build`` directory. Note
-that any changes (and git commits) to the project itself will be inside the ``app`` folder. The
-``build`` and ``deps`` directories being one level higher prevents the repo from cataloging all of
-the changes to the dependencies and the build (so no ``.gitignore`` is needed)
+Build Zephyr sample application for Golioth Aludel-Mini
+(``aludel_mini_v1_sparkfun9160_ns``) from the top level of your project. After a
+successful build you will see a new ``build`` directory. Note that any changes
+(and git commits) to the project itself will be inside the ``app`` folder. The
+``build`` and ``deps`` directories being one level higher prevents the repo from
+cataloging all of the changes to the dependencies and the build (so no
+``.gitignore`` is needed)
 
 During building, replace ``<your.semantic.version>`` to utilize the DFU functionality on this
 Reference Design.
 
-.. code-block:: console
+.. code-block:: text
 
    $ (.venv) west build -p -b aludel_mini_v1_sparkfun9160_ns app -- -DCONFIG_MCUBOOT_IMAGE_VERSION=\"<your.semantic.version>\"
    $ (.venv) west flash
@@ -73,7 +75,7 @@ Reference Design.
 Configure PSK-ID and PSK using the device shell based on your Golioth
 credentials and reboot:
 
-.. code-block:: console
+.. code-block:: text
 
    uart:~$ settings set golioth/psk-id <my-psk-id@my-project>
    uart:~$ settings set golioth/psk <my-psk>
@@ -211,7 +213,7 @@ This reference design may be built for the `Nordic nRF9160 DK`_.
 Use the following commands to build and program. (Use the same console commands
 from above to provision this board after programming the firmware.)
 
-.. code-block:: console
+.. code-block:: text
 
    $ (.venv) west build -p -b nrf9160dk_nrf9160_ns app -- -DCONFIG_MCUBOOT_IMAGE_VERSION=\"<your.semantic.version>\"
    $ (.venv) west flash
