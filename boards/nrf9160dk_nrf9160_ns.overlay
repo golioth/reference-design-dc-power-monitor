@@ -20,6 +20,10 @@
 		compatible = "ti,ina260";
 		reg = <0x40>;
 	};
+	ina260_ch1: ina260@41 {
+		compatible = "ti,ina260";
+		reg = <0x41>;
+	};
 };
 
 &pinctrl {
