@@ -6,6 +6,3 @@ build*/
 .cache
 credentials.conf
 __pycache__/
-golioth-boards
-libostentus
-network_info/

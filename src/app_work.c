@@ -36,8 +36,10 @@ int64_t calculate_reading(uint8_t upper, uint8_t lower)
 #define SPI_OP	SPI_OP_MODE_MASTER | SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8) | SPI_LINES_SINGLE
 
 #include "app_work.h"
-#include "libostentus/libostentus.h"
 
+#ifdef CONFIG_LIB_OSTENTUS
+#include <libostentus.h>
+#endif
 #ifdef CONFIG_ALUDEL_BATTERY_MONITOR
 #include "battery_monitor/battery.h"
 #endif
@@ -294,11 +296,11 @@ void app_work_sensor_read(void)
 	vcp_raw_t ch0_raw, ch1_raw;
 	int ch0_invalid, ch1_invalid;
 
-	/* Take battery reading */
-	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR,
-	   (read_and_report_battery();
-	    slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
-	    slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));));
+	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR, (
+		read_and_report_battery();
+		slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
+		slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));
+	));
 
 	/* Fetch new readings from sensors */
 	get_adc_reading(&adc_ch0);
