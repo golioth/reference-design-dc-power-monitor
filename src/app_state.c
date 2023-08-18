@@ -55,7 +55,7 @@ int app_state_reset_desired(void)
 	     zcbor_map_end_encode(encoding_state, 2);
 
 	if (!ok) {
-		LOG_ERR("Error encoding CBOR to reset deired endpoint");
+		LOG_ERR("Error encoding CBOR to reset desired endpoint");
 		return -ENODATA;
 	}
 
