@@ -2,3 +2,4 @@
 # SPDX-License-Identifier: Apache-2.0
 
 target_sources(app PRIVATE ina260.c)
+zephyr_include_directories_ifdef(CONFIG_INA260 include)

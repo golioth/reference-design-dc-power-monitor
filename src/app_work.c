@@ -19,8 +19,7 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 #include "app_state.h"
 #include "app_settings.h"
 
-/* FIXME: this is an awkward include */
-#include "../drivers/sensor/ina260/ina260.h"
+#include <app/sensor/ina260.h>
 
 /* Convert DC reading to actual value */
 int64_t calculate_reading(uint8_t upper, uint8_t lower)

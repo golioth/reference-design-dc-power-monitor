@@ -17,7 +17,7 @@ LOG_MODULE_REGISTER(ina260, LOG_LEVEL_DBG);
 
 #include <zephyr/drivers/gpio.h>
 
-#include "ina260.h"
+#include <app/sensor/ina260.h>
 
 static int ina260_reg_read(const struct device *dev,
 		uint8_t reg_addr,
