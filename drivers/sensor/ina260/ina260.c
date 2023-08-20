@@ -19,9 +19,14 @@ LOG_MODULE_REGISTER(ina260, LOG_LEVEL_DBG);
 
 #include <app/sensor/ina260.h>
 
-static int ina260_reg_read(const struct device *dev,
-		uint8_t reg_addr,
-		uint16_t *reg_data)
+#ifdef CONFIG_INA260_FAKE
+__attribute__((weak))
+#else
+static
+#endif
+int ina260_reg_read(const struct device *dev,
+		    uint8_t reg_addr,
+		    uint16_t *reg_data)
 {
 	const struct ina260_device_config *cfg = dev->config;
 	uint8_t rx_buf[2];
