@@ -7,6 +7,16 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] - 2023-07-18
+
+### Changed
+- Implented a driver for the ina260 sensor
+- Merged `template_v1.1.0` from the Reference Design Template (NCS 2.4.1 Zephyr v3.3.99-ncs1-1)
+- Converted from qcbor to zcbor to match Golioth Zephyr SDK v0.7.x change
+
+### Fixed
+- Added missing ina260 node for channel 1 the nRF9160dk overlay file
+
 ## [1.1.4] - 2023-07-15
 
 ### Added

@@ -18,9 +18,6 @@ LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
 #include "app_work.h"
 #include "app_state.h"
 #include "app_settings.h"
-#include <qcbor/qcbor.h>
-#include <qcbor/qcbor_decode.h>
-#include <qcbor/qcbor_spiffy_decode.h>
 
 /* FIXME: this is an awkward include */
 #include "../drivers/sensor/ina260/ina260.h"
@@ -36,8 +33,10 @@ int64_t calculate_reading(uint8_t upper, uint8_t lower)
 #define SPI_OP	SPI_OP_MODE_MASTER | SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8) | SPI_LINES_SINGLE
 
 #include "app_work.h"
-#include "libostentus/libostentus.h"
 
+#ifdef CONFIG_LIB_OSTENTUS
+#include <libostentus.h>
+#endif
 #ifdef CONFIG_ALUDEL_BATTERY_MONITOR
 #include "battery_monitor/battery.h"
 #endif
@@ -294,11 +293,11 @@ void app_work_sensor_read(void)
 	vcp_raw_t ch0_raw, ch1_raw;
 	int ch0_invalid, ch1_invalid;
 
-	/* Take battery reading */
-	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR,
-	   (read_and_report_battery();
-	    slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
-	    slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));));
+	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR, (
+		read_and_report_battery();
+		slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
+		slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));
+	));
 
 	/* Fetch new readings from sensors */
 	get_adc_reading(&adc_ch0);
@@ -344,46 +343,63 @@ void app_work_sensor_read(void)
 
 static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 {
-	int err;
-	uint64_t decoded_ch0, decoded_ch1;
-
 	if (rsp->err) {
 		LOG_ERR("Failed to receive cumulative value: %d", rsp->err);
 		return rsp->err;
 	}
 
-	LOG_HEXDUMP_DBG(rsp->data, rsp->len, ADC_CUMULATIVE_ENDP);
+	uint64_t decoded_ch0 = 0;
+	uint64_t decoded_ch1 = 0;
+	bool found_ch0 = 0;
+	bool found_ch1 = 0;
 
-	QCBORDecodeContext decode_ctx;
-	UsefulBufC payload = { rsp->data, rsp->len };
+	struct zcbor_string key;
+	uint64_t data;
+	bool ok;
 
-	QCBORDecode_Init(&decode_ctx, payload, QCBOR_DECODE_MODE_NORMAL);
-	QCBORDecode_EnterMap(&decode_ctx, NULL);
-	QCBORDecode_GetUInt64InMapSZ(&decode_ctx, "ch0", &decoded_ch0);
-	QCBORDecode_GetUInt64InMapSZ(&decode_ctx, "ch1", &decoded_ch1);
-	QCBORDecode_ExitMap(&decode_ctx);
-	err = QCBORDecode_Finish(&decode_ctx);
-	if (err) {
-		LOG_ERR("QCBOR decode error: %d", err);
-		decoded_ch0 = 0;
-		decoded_ch1 = 0;
+	ZCBOR_STATE_D(decoding_state, 1, rsp->data, rsp->len, 1);
+	ok = zcbor_map_start_decode(decoding_state);
+	if (!ok) {
+		return 1;
+		goto cumulative_decode_error;
+	}
+
+	while (decoding_state->elem_count > 1) {
+		ok = zcbor_tstr_decode(decoding_state, &key) &&
+		     zcbor_uint64_decode(decoding_state, &data);
+		if (!ok) {
+			goto cumulative_decode_error;
+		}
+
+		if (strncmp(key.value, "ch0", 3) == 0) {
+			found_ch0 = true;
+			decoded_ch0 = data;
+		} else if (strncmp(key.value, "ch1", 3) == 0){
+			found_ch1 = true;
+			decoded_ch1 = data;
+		} else {
+			continue;
+		}
+	}
+
+	if ((found_ch0 && found_ch1) == false) {
+		goto cumulative_decode_error;
 	} else {
 		LOG_DBG("Decoded: ch0: %lld, ch1: %lld", decoded_ch0, decoded_ch1);
+		if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
+			adc_ch0.total_cloud = decoded_ch0;
+			adc_ch1.total_cloud = decoded_ch1;
+			adc_ch0.loaded_from_cloud = true;
+			adc_ch1.loaded_from_cloud = true;
+			k_sem_give(&adc_data_sem);
+		}
+		return 0;
 	}
 
-	if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
-		adc_ch0.total_cloud = decoded_ch0;
-		adc_ch1.total_cloud = decoded_ch1;
-		adc_ch0.loaded_from_cloud = true;
-		adc_ch1.loaded_from_cloud = true;
-
-		LOG_DBG("CH0: %lld, %d\tCH1: %lld, %d", adc_ch0.total_cloud,
-				adc_ch0.loaded_from_cloud,adc_ch1.total_cloud,
-				adc_ch1.loaded_from_cloud);
-
-		k_sem_give(&adc_data_sem);
-	}
-	return 0;
+cumulative_decode_error:
+	LOG_ERR("ZCBOR Decoding Error");
+	LOG_HEXDUMP_ERR(rsp->data, rsp->len, "cbor_payload");
+	return -EBADMSG;
 }
 
 void app_work_on_connect(void)

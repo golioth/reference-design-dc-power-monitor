@@ -11,9 +11,6 @@ LOG_MODULE_REGISTER(app_state, LOG_LEVEL_DBG);
 
 #include "app_state.h"
 #include "app_work.h"
-#include <qcbor/qcbor.h>
-#include <qcbor/qcbor_decode.h>
-#include <qcbor/qcbor_spiffy_decode.h>
 
 #define LIVE_RUNTIME_FMT "{\"live_runtime\":{\"ch0\":%lld,\"ch1\":%lld}"
 #define CUMULATIVE_RUNTIME_FMT ",\"cumulative\":{\"ch0\":%lld,\"ch1\":%lld}}"
@@ -48,26 +45,28 @@ void app_state_init(struct golioth_client *state_client)
 
 int app_state_reset_desired(void)
 {
-	QCBOREncodeContext encode_ctx;
-	UsefulBuf_MAKE_STACK_UB(useful_buf, 48);
-	QCBOREncode_Init(&encode_ctx, useful_buf);
-	QCBOREncode_OpenMap(&encode_ctx);
-	QCBOREncode_AddBoolToMap(&encode_ctx, DESIRED_RESET_KEY, false);
-	QCBOREncode_CloseMap(&encode_ctx);
-	UsefulBufC EncodedCBOR;
-	QCBORError qcErr = QCBOREncode_Finish(&encode_ctx, &EncodedCBOR);
+	uint8_t cbor_payload[32];
+	bool ok;
 
-	if (qcErr) {
-		LOG_ERR("Error encoding CBOR to reset deired endpoint: %d", qcErr);
-		return -qcErr;
+	ZCBOR_STATE_E(encoding_state, 16, cbor_payload, sizeof(cbor_payload), 0);
+	ok = zcbor_map_start_encode(encoding_state, 2) &&
+	     zcbor_tstr_put_lit(encoding_state, DESIRED_RESET_KEY) &&
+	     zcbor_bool_put(encoding_state, false) &&
+	     zcbor_map_end_encode(encoding_state, 2);
+
+	if (!ok) {
+		LOG_ERR("Error encoding CBOR to reset desired endpoint");
+		return -ENODATA;
 	}
+
+	LOG_HEXDUMP_DBG(cbor_payload, encoding_state->payload - cbor_payload, "cbor_payload");
 
 	int err;
 	err = golioth_lightdb_set_cb(client,
 				     APP_STATE_DESIRED_ENDP,
 				     GOLIOTH_CONTENT_FORMAT_APP_CBOR,
-				     EncodedCBOR.ptr,
-				     EncodedCBOR.len,
+				     cbor_payload,
+				     encoding_state->payload - cbor_payload,
 				     async_handler,
 				     NULL
 				     );
@@ -177,25 +176,30 @@ int app_state_desired_handler(struct golioth_req_rsp *rsp)
 		return -EFAULT;
 	}
 
-	QCBORDecodeContext decode_ctx;
+	struct zcbor_string key;
 	bool reset_cumulative;
-	UsefulBufC payload = { rsp->data, rsp->len };
+	bool ok;
 
-	QCBORDecode_Init(&decode_ctx, payload, QCBOR_DECODE_MODE_NORMAL);
-	QCBORDecode_EnterMap(&decode_ctx, NULL);
-	QCBORDecode_GetBoolInMapSZ(&decode_ctx, DESIRED_RESET_KEY, &reset_cumulative);
-	QCBORDecode_ExitMap(&decode_ctx);
+	ZCBOR_STATE_D(decoding_state, 1, rsp->data, rsp->len, 1);
+	ok = zcbor_map_start_decode(decoding_state) &&
+	     zcbor_tstr_decode(decoding_state, &key) &&
+	     zcbor_bool_decode(decoding_state, &reset_cumulative) &&
+	     zcbor_map_end_decode(decoding_state);
 
-	err = QCBORDecode_Finish(&decode_ctx);
-	if (err) {
-		LOG_ERR("QCBOR decode error; resetting desired endpoint values.");
-		LOG_ERR("QCBOR error code %d: %s", err, qcbor_err_to_str(err));
+	if (!ok) {
+		LOG_ERR("ZCBOR Decoding Error");
+		LOG_HEXDUMP_ERR(rsp->data, rsp->len, "cbor_payload");
 		app_state_reset_desired();
 		return -ENOTSUP;
+	} else if (strncmp(key.value, DESIRED_RESET_KEY, strlen(DESIRED_RESET_KEY)) != 0){
+		LOG_ERR("Unexpected key received: %.*s", key.len, key.value);
+		app_state_reset_desired();
+		return -ENODATA;
 	} else {
-		LOG_DBG("Decoded: reset_cumulative == %s",
-				reset_cumulative ? "true" : "false"
-				);
+		LOG_DBG("Decoded: %.*s == %s",
+			key.len,
+			key.value,
+			reset_cumulative ? "true" : "false");
 		if (reset_cumulative) {
 			LOG_INF("Request to reset cumulative values received. Processing now.");
 			reset_cumulative_totals();
