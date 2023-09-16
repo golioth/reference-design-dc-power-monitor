@@ -5,8 +5,22 @@
 Golioth DC Power Monitor Reference Design
 #########################################
 
-Overview
-********
+Full Project Overview
+*********************
+
+The full details of the end-to-end project are available on `the Golioth DC Power Monitor project
+page`_. This includes additional details about:
+
+* Hardware
+* Block Diagram of the overall system
+* Visualization dashboard info
+
+.. image:: img/dcpm_project.jpg
+  :target: https://projects.golioth.io/reference-designs/dc-power-monitor/
+
+
+Firmware System Overview
+************************
 
 The Golioth DC Power Monitor is an IoT reference design that includes two channels for monitoring
 equipment that is powered by Direct Current (DC). This is commonly needed for battery management
