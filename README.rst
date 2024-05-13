@@ -1,5 +1,5 @@
 ..
-   Copyright (c) 2023 Golioth, Inc.
+   Copyright (c) 2022-2023 Golioth, Inc.
    SPDX-License-Identifier: Apache-2.0
 
 Golioth DC Power Monitor Reference Design
@@ -78,12 +78,13 @@ successful build you will see a new ``build`` directory. Note that any changes
 cataloging all of the changes to the dependencies and the build (so no
 ``.gitignore`` is needed)
 
-During building, replace ``<your.semantic.version>`` to utilize the DFU functionality on this
-Reference Design.
+Prior to building, update ``CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION`` in the ``prj.conf`` file to
+reflect the firmware version number you want to assign to this build. Then run the following
+commands to build and program the firmware onto the device.
 
 .. code-block:: text
 
-   $ (.venv) west build -p -b aludel_mini_v1_sparkfun9160_ns app -- -DCONFIG_MCUBOOT_IMAGE_VERSION=\"<your.semantic.version>\"
+   $ (.venv) west build -p -b aludel_mini_v1_sparkfun9160_ns app
    $ (.venv) west flash
 
 Configure PSK-ID and PSK using the device shell based on your Golioth
@@ -224,12 +225,13 @@ Nordic nRF9160 DK
 
 This reference design may be built for the `Nordic nRF9160 DK`_.
 
-Use the following commands to build and program. (Use the same console commands
-from above to provision this board after programming the firmware.)
+Prior to building, update ``CONFIG_MCUBOOT_IMGTOOL_SIGN_VERSION`` in the ``prj.conf`` file to
+reflect the firmware version number you want to assign to this build. Then run the following
+commands to build and program the firmware onto the device.
 
 .. code-block:: text
 
-   $ (.venv) west build -p -b nrf9160dk_nrf9160_ns app -- -DCONFIG_MCUBOOT_IMAGE_VERSION=\"<your.semantic.version>\"
+   $ (.venv) west build -p -b nrf9160dk_nrf9160_ns app
    $ (.venv) west flash
 
 External Libraries
@@ -243,9 +245,12 @@ from ``west.yml`` and remove the includes/function calls from the C code.
   Aludel-Mini
 * `libostentus`_ is a helper library for controlling the Ostentus ePaper
   faceplate
+* `zephyr-network-info`_ is a helper library for querying, formatting, and returning network
+  connection information via Zephyr log or Golioth RPC
 
 .. _the Golioth DC Power Monitor project page: https://projects.golioth.io/reference-designs/dc-power-monitor/
 .. _Golioth Console: https://console.golioth.io
 .. _Nordic nRF9160 DK: https://www.nordicsemi.com/Products/Development-hardware/nrf9160-dk
 .. _golioth-zephyr-boards: https://github.com/golioth/golioth-zephyr-boards
 .. _libostentus: https://github.com/golioth/libostentus
+.. _zephyr-network-info: https://github.com/golioth/zephyr-network-info

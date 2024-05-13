@@ -1,15 +1,15 @@
 /*
- * Copyright (c) 2022 Golioth, Inc.
+ * Copyright (c) 2022-2023 Golioth, Inc.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
-#ifndef __APP_WORK_H__
-#define __APP_WORK_H__
+#ifndef __APP_SENSORS_H__
+#define __APP_SENSORS_H__
 
 #include <stdint.h>
 #include <zephyr/drivers/spi.h>
-#include <net/golioth/system_client.h>
+#include <golioth/client.h>
 
 extern struct k_sem adc_data_sem;
 
@@ -37,9 +37,11 @@ typedef struct {
 
 void get_ontime(struct ontime *ot);
 int reset_cumulative_totals(void);
-void app_work_init(struct golioth_client *work_client);
 void app_work_on_connect(void);
-void app_work_sensor_read(void);
+void app_sensors_set_client(struct golioth_client *sensors_client);
+void app_sensors_read_and_stream(void);
+void app_sensors_init(void);
+
 
 #define LABEL_UP_COUNTER "Counter"
 #define LABEL_DN_COUNTER "Anti-counter"
@@ -73,4 +75,4 @@ typedef enum {
 #define CH1_VOL_LABEL "Voltage ch1"
 #define CH1_POW_LABEL "Power ch1"
 
-#endif /* __APP_WORK_H__ */
+#endif /* __APP_SENSORS_H__ */

@@ -1,21 +1,24 @@
 /*
- * Copyright (c) 2022 Golioth, Inc.
+ * Copyright (c) 2022-2023 Golioth, Inc.
  *
  * SPDX-License-Identifier: Apache-2.0
  */
 
 #include <zephyr/logging/log.h>
-LOG_MODULE_REGISTER(app_work, LOG_LEVEL_DBG);
+LOG_MODULE_REGISTER(app_sensors, LOG_LEVEL_DBG);
 
 #include <stdlib.h>
-#include <net/golioth/system_client.h>
+#include <golioth/client.h>
+#include <golioth/lightdb_state.h>
+#include <golioth/stream.h>
+#include <zcbor_decode.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/spi.h>
 
-#include "app_work.h"
+#include "app_sensors.h"
 #include "app_state.h"
 #include "app_settings.h"
 
@@ -31,8 +34,6 @@ int64_t calculate_reading(uint8_t upper, uint8_t lower)
 }
 
 #define SPI_OP	SPI_OP_MODE_MASTER | SPI_MODE_CPOL | SPI_MODE_CPHA | SPI_WORD_SET(8) | SPI_LINES_SINGLE
-
-#include "app_work.h"
 
 #ifdef CONFIG_LIB_OSTENTUS
 #include <libostentus.h>
@@ -85,13 +86,16 @@ void get_ontime(struct ontime *ot)
 }
 
 /* Callback for LightDB Stream */
-static int async_error_handler(struct golioth_req_rsp *rsp)
+
+static void async_error_handler(struct golioth_client *client,
+				const struct golioth_response *response,
+				const char *path,
+				void *arg)
 {
-	if (rsp->err) {
-		LOG_ERR("Async task failed: %d", rsp->err);
-		return rsp->err;
+	if (response->status != GOLIOTH_OK) {
+		LOG_ERR("Async task failed: %d", response->status);
+		return;
 	}
-	return 0;
 }
 
 static int get_adc_reading(adc_node_t *adc)
@@ -198,10 +202,13 @@ static int push_dual_adc_to_golioth(vcp_raw_t *ch0_raw, vcp_raw_t *ch1_raw)
 		 ch1_raw->power
 		 );
 
-	err = golioth_stream_push_cb(client, ADC_STREAM_ENDP,
-			GOLIOTH_CONTENT_FORMAT_APP_JSON, json_buf, strlen(json_buf),
-			async_error_handler, NULL);
-
+	err = golioth_stream_set_async(client,
+				       ADC_STREAM_ENDP,
+				       GOLIOTH_CONTENT_TYPE_JSON,
+				       json_buf,
+				       strlen(json_buf),
+				       async_error_handler,
+				       NULL);
 	if (err) {
 		LOG_ERR("Failed to send sensor data to Golioth: %d", err);
 		return err;
@@ -228,10 +235,13 @@ static int push_single_adc_to_golioth(vcp_raw_t *single_ch_data, char *single_ch
 		 single_ch_data->power
 		 );
 
-	err = golioth_stream_push_cb(client, ADC_STREAM_ENDP,
-			GOLIOTH_CONTENT_FORMAT_APP_JSON, json_buf, strlen(json_buf),
-			async_error_handler, NULL);
-
+	err = golioth_stream_set_async(client,
+				       ADC_STREAM_ENDP,
+				       GOLIOTH_CONTENT_TYPE_JSON,
+				       json_buf,
+				       strlen(json_buf),
+				       async_error_handler,
+				       NULL);
 	if (err) {
 		LOG_ERR("Failed to send sensor data to Golioth: %d", err);
 		return err;
@@ -287,16 +297,18 @@ int reset_cumulative_totals(void)
 
 /* This will be called by the main() loop */
 /* Do all of your work here! */
-void app_work_sensor_read(void)
+void app_sensors_read_and_stream(void)
 {
 	int err;
 	vcp_raw_t ch0_raw, ch1_raw;
 	int ch0_invalid, ch1_invalid;
 
 	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR, (
-		read_and_report_battery();
-		slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
-		slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));
+		read_and_report_battery(client);
+		IF_ENABLED(CONFIG_LIB_OSTENTUS, (
+			slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
+			slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));
+		));
 	));
 
 	/* Fetch new readings from sensors */
@@ -341,11 +353,16 @@ void app_work_sensor_read(void)
 	}
 }
 
-static int get_cumulative_handler(struct golioth_req_rsp *rsp)
+static void get_cumulative_handler(struct golioth_client *client,
+				  const struct golioth_response *response,
+				  const char *path,
+				  const uint8_t *payload,
+				  size_t payload_size,
+				  void *arg)
 {
-	if (rsp->err) {
-		LOG_ERR("Failed to receive cumulative value: %d", rsp->err);
-		return rsp->err;
+	if (response->status != GOLIOTH_OK) {
+		LOG_ERR("Failed to receive cumulative value: %d", response->status);
+		return;
 	}
 
 	uint64_t decoded_ch0 = 0;
@@ -357,10 +374,9 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 	uint64_t data;
 	bool ok;
 
-	ZCBOR_STATE_D(decoding_state, 1, rsp->data, rsp->len, 1);
+	ZCBOR_STATE_D(decoding_state, 1, payload, payload_size, 1);
 	ok = zcbor_map_start_decode(decoding_state);
 	if (!ok) {
-		return 1;
 		goto cumulative_decode_error;
 	}
 
@@ -393,30 +409,34 @@ static int get_cumulative_handler(struct golioth_req_rsp *rsp)
 			adc_ch1.loaded_from_cloud = true;
 			k_sem_give(&adc_data_sem);
 		}
-		return 0;
+		return;
 	}
 
 cumulative_decode_error:
 	LOG_ERR("ZCBOR Decoding Error");
-	LOG_HEXDUMP_ERR(rsp->data, rsp->len, "cbor_payload");
-	return -EBADMSG;
+	LOG_HEXDUMP_ERR(payload, payload_size, "cbor_payload");
 }
 
 void app_work_on_connect(void)
 {
 	/* Get cumulative "on" time from Golioth LightDB State */
-	int err;
-	err = golioth_lightdb_get_cb(client, ADC_CUMULATIVE_ENDP,
-				     GOLIOTH_CONTENT_FORMAT_APP_CBOR,
-				     get_cumulative_handler, NULL);
+	int err = golioth_lightdb_get_async(client,
+					    ADC_CUMULATIVE_ENDP,
+					    GOLIOTH_CONTENT_TYPE_CBOR,
+					    get_cumulative_handler,
+					    NULL);
 	if (err) {
 		LOG_WRN("failed to get cumulative channel data from LightDB: %d", err);
 	}
 }
 
-void app_work_init(struct golioth_client *work_client)
+void app_sensors_set_client(struct golioth_client *sensors_client)
 {
-	client = work_client;
+	client = sensors_client;
+}
+
+void app_sensors_init(void)
+{
 	k_sem_init(&adc_data_sem, 0, 1);
 
 	if (device_is_ready(adc_ch0.dev)) {
