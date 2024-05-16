@@ -89,12 +89,16 @@ int app_state_observe(struct golioth_client *state_client)
 
 	app_state_update_actual();
 
+	char observe_path[64];
+
+	snprintk(observe_path, sizeof(observe_path), "%s/%s", APP_STATE_DESIRED_ENDP,
+		 DESIRED_RESET_KEY);
 	int err = golioth_lightdb_observe_async(client,
-						APP_STATE_DESIRED_ENDP,
+						observe_path,
 						app_state_desired_handler,
 						NULL);
 	if (err) {
-	   LOG_WRN("failed to observe lightdb path: %d", err);
+		LOG_WRN("failed to observe lightdb path: %d", err);
 	}
 	return err;
 }
@@ -168,6 +172,8 @@ int app_state_report_ontime(adc_node_t *ch0, adc_node_t *ch1)
 			}
 		}
 		k_sem_give(&adc_data_sem);
+	} else {
+		return -EACCES;
 	}
 
 	return 0;
@@ -189,41 +195,16 @@ static void app_state_desired_handler(struct golioth_client *client,
 
 	LOG_HEXDUMP_DBG(payload, payload_size, APP_STATE_DESIRED_ENDP);
 
-	if ((payload_size == 1) && (payload[0] == 0xf6)) {
-		/* This is `null` in CBOR */
-		LOG_ERR("Endpoint is null, resetting desired to defaults");
-		app_state_reset_desired();
+	if (strncmp(payload, "false", strlen("false")) == 0) {
 		return;
-	}
-
-	struct zcbor_string key;
-	bool reset_cumulative;
-	bool ok;
-
-	ZCBOR_STATE_D(decoding_state, 1, payload, payload_size, 1);
-	ok = zcbor_map_start_decode(decoding_state) &&
-	     zcbor_tstr_decode(decoding_state, &key) &&
-	     zcbor_bool_decode(decoding_state, &reset_cumulative) &&
-	     zcbor_map_end_decode(decoding_state);
-
-	if (!ok) {
-		LOG_ERR("ZCBOR Decoding Error");
-		LOG_HEXDUMP_ERR(payload, payload_size, "cbor_payload");
+	} else if (strncmp(payload, "true", strlen("true")) == 0) {
+		LOG_INF("Request to reset cumulative values received. Processing now.");
+		reset_cumulative_totals();
 		app_state_reset_desired();
-		return;
-	} else if (strncmp(key.value, DESIRED_RESET_KEY, strlen(DESIRED_RESET_KEY)) != 0){
-		LOG_ERR("Unexpected key received: %.*s", key.len, key.value);
-		app_state_reset_desired();
-		return;
 	} else {
-		LOG_DBG("Decoded: %.*s == %s",
-			key.len,
-			key.value,
-			reset_cumulative ? "true" : "false");
-		if (reset_cumulative) {
-			LOG_INF("Request to reset cumulative values received. Processing now.");
-			reset_cumulative_totals();
-			app_state_reset_desired();
-		}
+		LOG_ERR("Desired State Decoding Error");
+		LOG_HEXDUMP_ERR(payload, payload_size, "desired_state");
+		app_state_reset_desired();
+		return;
 	}
 }

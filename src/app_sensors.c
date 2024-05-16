@@ -143,6 +143,26 @@ static int log_sensor_values(adc_node_t *sensor, bool get_new_reading)
 			sensor_value_to_double(&cur),
 			sensor_value_to_double(&pow)
 			);
+
+		IF_ENABLED(CONFIG_LIB_OSTENTUS, (
+			char ostentus_buf[32];
+			uint8_t slide_num;
+
+			snprintk(ostentus_buf, sizeof(ostentus_buf), "%.02f V",
+				 sensor_value_to_double(&vol));
+			slide_num = (sensor->ch_num == 0) ? CH0_VOLTAGE : CH1_VOLTAGE;
+			slide_set(slide_num, ostentus_buf, strlen(ostentus_buf));
+
+			snprintk(ostentus_buf, sizeof(ostentus_buf), "%.02f mA",
+				 sensor_value_to_double(&cur) * 1000);
+			slide_num = (sensor->ch_num == 0) ? CH0_CURRENT : CH1_CURRENT;
+			slide_set(slide_num, ostentus_buf, strlen(ostentus_buf));
+
+			snprintk(ostentus_buf, sizeof(ostentus_buf), "%.02f W",
+				 sensor_value_to_double(&pow));
+			slide_num = (sensor->ch_num == 0) ? CH0_POWER : CH1_POWER;
+			slide_set(slide_num, ostentus_buf, strlen(ostentus_buf));
+		));
 	} else {
 		return -ENODATA;
 	}
@@ -288,11 +308,19 @@ int reset_cumulative_totals(void)
 		adc_ch0.total_unreported = 0;
 		adc_ch1.total_unreported = 0;
 		k_sem_give(&adc_data_sem);
-		return 0;
 	} else {
 		LOG_ERR("Could not reset cumulative values; blocked by semaphore.");
 		return -EACCES;
 	}
+
+	/* Send new values to Golioth */
+	int err = app_state_report_ontime(&adc_ch0, &adc_ch1);
+
+	if (err) {
+		LOG_ERR("Unable to send ontime to server: %d", err);
+	}
+
+	return err;
 }
 
 /* This will be called by the main() loop */
@@ -362,6 +390,16 @@ static void get_cumulative_handler(struct golioth_client *client,
 {
 	if (response->status != GOLIOTH_OK) {
 		LOG_ERR("Failed to receive cumulative value: %d", response->status);
+		return;
+	}
+
+	if ((payload_size == 1) && (payload[0] == 0xf6)) {
+		/* 0xf6 is Null in CBOR */
+		if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
+			adc_ch0.loaded_from_cloud = true;
+			adc_ch1.loaded_from_cloud = true;
+			k_sem_give(&adc_data_sem);
+		}
 		return;
 	}
 
