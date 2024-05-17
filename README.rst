@@ -5,30 +5,14 @@
 Golioth DC Power Monitor Reference Design
 #########################################
 
-Full Project Overview
-*********************
-
-The full details of the end-to-end project are available on `the Golioth DC Power Monitor project
-page`_. This includes additional details about:
-
-* Hardware
-* Block Diagram of the overall system
-* Visualization dashboard info
-
-.. image:: img/dcpm_project.jpg
-  :target: https://projects.golioth.io/reference-designs/dc-power-monitor/
-
-
-Firmware System Overview
-************************
+Overview
+********
 
 The Golioth DC Power Monitor is an IoT reference design that includes two channels for monitoring
 equipment that is powered by Direct Current (DC). This is commonly needed for battery management
 systems like electric cars or bikes. Having reliable data on the state of the charge/discharge
 cycles over a period of time makes it possible to perform predictive maintenance and alert when
 levels are running low.
-
-.. image:: img/golioth_dc_power_monitor_front.jpg
 
 This reference design uses two ina260 current/voltage/power measurement chips to measure the
 circuits passing through them. Readings from each channel are passed up to Golioth via a Nordic
@@ -37,7 +21,45 @@ long a device has currently been running. This data is also used to report the l
 of the equipment being monitored. The delay between readings and the threshold at which the
 equipment is considered "off" are configurable from the Golioth cloud.
 
-Learn more about this reference design on `the Golioth DC Power Monitor project page`_.
+The full details of the end-to-end project are available on the Golioth `DC Power Monitor Project
+Page`_. This includes additional details about:
+
+Supported Hardware
+******************
+
+.. pull-quote::
+   [!IMPORTANT]
+
+   In Zephyr, each of these different hardware variants is given a unique
+   "board" identifier, which is used by the build system to generate firmware
+   for that variant.
+
+   When building firmware using the instructions below, make sure to use the
+   correct Zephyr board identifier that corresponds to your follow-along
+   hardware platform.
+
+.. list-table:: **Follow-Along Hardware**
+   :header-rows: 1
+
+   * - Hardware
+     - Zephyr Board
+     - Follow-Along Guide
+
+   * - .. image:: img/golioth_dc_power_monitor_front.jpg
+          :width: 240
+     - ``nrf9160dk_nrf9160_ns``
+     - `nRF9160 DK Follow-Along Guide`_
+
+.. list-table:: **Custom Golioth Hardware**
+   :header-rows: 1
+
+   * - Hardware
+     - Zephyr Board
+     - Project Page
+   * - .. image:: img/golioth-dc-power-fah-nrf9160dk.jpg
+          :width: 240
+     - ``aludel_mini_v1_sparkfun9160_ns``
+     - `DC Power Monitor Project Page`_
 
 Local set up
 ************
@@ -248,7 +270,9 @@ from ``west.yml`` and remove the includes/function calls from the C code.
 * `zephyr-network-info`_ is a helper library for querying, formatting, and returning network
   connection information via Zephyr log or Golioth RPC
 
-.. _the Golioth DC Power Monitor project page: https://projects.golioth.io/reference-designs/dc-power-monitor/
+
+.. _DC Power Monitor Project Page: https://projects.golioth.io/reference-designs/dc-power-monitor/
+.. _nRF9160 DK Follow-Along Guide: https://projects.golioth.io/reference-designs/dc-power-monitor/guide-nrf9160-dk
 .. _Golioth Console: https://console.golioth.io
 .. _Nordic nRF9160 DK: https://www.nordicsemi.com/Products/Development-hardware/nrf9160-dk
 .. _golioth-zephyr-boards: https://github.com/golioth/golioth-zephyr-boards
