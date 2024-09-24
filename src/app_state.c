@@ -95,6 +95,7 @@ int app_state_observe(struct golioth_client *state_client)
 		 DESIRED_RESET_KEY);
 	int err = golioth_lightdb_observe_async(client,
 						observe_path,
+						GOLIOTH_CONTENT_TYPE_JSON,
 						app_state_desired_handler,
 						NULL);
 	if (err) {
