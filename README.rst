@@ -45,9 +45,9 @@ Supported Hardware
      - Zephyr Board
      - Follow-Along Guide
 
-   * - .. image:: img/golioth_dc_power_monitor_front.jpg
+   * - .. image:: img/golioth-dc-power-fah-nrf9160dk.jpg
           :width: 240
-     - ``nrf9160dk_nrf9160_ns``
+     - ``nrf9160dk/nrf9160/ns``
      - `nRF9160 DK Follow-Along Guide`_
 
 .. list-table:: **Custom Golioth Hardware**
@@ -56,10 +56,14 @@ Supported Hardware
    * - Hardware
      - Zephyr Board
      - Project Page
-   * - .. image:: img/golioth-dc-power-fah-nrf9160dk.jpg
+   * - .. image:: img/golioth_dc_power_monitor_front.jpg
           :width: 240
-     - ``aludel_mini_v1_sparkfun9160_ns``
+     - ``aludel_mini/nrf9160/ns``
      - `DC Power Monitor Project Page`_
+   * - .. image:: img/golioth-aludel-elixir.jpg
+          :width: 240
+     - ``aludel_elixir/nrf9160/ns``
+     - `Aludel Elixir`_
 
 Local set up
 ************
@@ -333,6 +337,7 @@ from ``west.yml`` and remove the includes/function calls from the C code.
 
 .. _DC Power Monitor Project Page: https://projects.golioth.io/reference-designs/dc-power-monitor/
 .. _nRF9160 DK Follow-Along Guide: https://projects.golioth.io/reference-designs/dc-power-monitor/guide-nrf9160-dk
+.. _Aludel Elixir: https://github.com/golioth/elixir-hw
 .. _Golioth Console: https://console.golioth.io
 .. _Nordic nRF9160 DK: https://www.nordicsemi.com/Products/Development-hardware/nrf9160-dk
 .. _Pipelines: https://docs.golioth.io/data-routing
