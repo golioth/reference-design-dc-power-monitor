@@ -43,11 +43,17 @@ void app_sensors_read_and_stream(void);
 void app_sensors_init(void);
 
 
-#define LABEL_UP_COUNTER "Counter"
-#define LABEL_DN_COUNTER "Anti-counter"
+/* Ostentus slide labels */
 #define LABEL_BATTERY	 "Battery"
 #define LABEL_FIRMWARE	 "Firmware"
 #define SUMMARY_TITLE	 "Channel 0:"
+#define CH0_CUR_LABEL "Current ch0"
+#define CH0_VOL_LABEL "Voltage ch0"
+#define CH0_POW_LABEL "Power ch0"
+#define CH1_CUR_LABEL "Current ch1"
+#define CH1_VOL_LABEL "Voltage ch1"
+#define CH1_POW_LABEL "Power ch1"
+
 
 /**
  * Each Ostentus slide needs a unique key. You may add additional slides by
@@ -65,14 +71,6 @@ typedef enum {
 	BATTERY_LVL,
 #endif
 	FIRMWARE
-}slide_key;
-
-/* Ostentus slide labels */
-#define CH0_CUR_LABEL "Current ch0"
-#define CH0_VOL_LABEL "Voltage ch0"
-#define CH0_POW_LABEL "Power ch0"
-#define CH1_CUR_LABEL "Current ch1"
-#define CH1_VOL_LABEL "Voltage ch1"
-#define CH1_POW_LABEL "Power ch1"
+} slide_key;
 
 #endif /* __APP_SENSORS_H__ */

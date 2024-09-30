@@ -37,6 +37,7 @@ int64_t calculate_reading(uint8_t upper, uint8_t lower)
 
 #ifdef CONFIG_LIB_OSTENTUS
 #include <libostentus.h>
+static const struct device *o_dev = DEVICE_DT_GET_ANY(golioth_ostentus);
 #endif
 #ifdef CONFIG_ALUDEL_BATTERY_MONITOR
 #include "battery_monitor/battery.h"
@@ -86,7 +87,6 @@ void get_ontime(struct ontime *ot)
 }
 
 /* Callback for LightDB Stream */
-
 static void async_error_handler(struct golioth_client *client,
 				const struct golioth_response *response,
 				const char *path,
@@ -151,17 +151,17 @@ static int log_sensor_values(adc_node_t *sensor, bool get_new_reading)
 			snprintk(ostentus_buf, sizeof(ostentus_buf), "%.02f V",
 				 sensor_value_to_double(&vol));
 			slide_num = (sensor->ch_num == 0) ? CH0_VOLTAGE : CH1_VOLTAGE;
-			slide_set(slide_num, ostentus_buf, strlen(ostentus_buf));
+			ostentus_slide_set(o_dev, slide_num, ostentus_buf, strlen(ostentus_buf));
 
 			snprintk(ostentus_buf, sizeof(ostentus_buf), "%.02f mA",
 				 sensor_value_to_double(&cur) * 1000);
 			slide_num = (sensor->ch_num == 0) ? CH0_CURRENT : CH1_CURRENT;
-			slide_set(slide_num, ostentus_buf, strlen(ostentus_buf));
+			ostentus_slide_set(o_dev, slide_num, ostentus_buf, strlen(ostentus_buf));
 
 			snprintk(ostentus_buf, sizeof(ostentus_buf), "%.02f W",
 				 sensor_value_to_double(&pow));
 			slide_num = (sensor->ch_num == 0) ? CH0_POWER : CH1_POWER;
-			slide_set(slide_num, ostentus_buf, strlen(ostentus_buf));
+			ostentus_slide_set(o_dev, slide_num, ostentus_buf, strlen(ostentus_buf));
 		));
 	} else {
 		return -ENODATA;
@@ -334,8 +334,14 @@ void app_sensors_read_and_stream(void)
 	IF_ENABLED(CONFIG_ALUDEL_BATTERY_MONITOR, (
 		read_and_report_battery(client);
 		IF_ENABLED(CONFIG_LIB_OSTENTUS, (
-			slide_set(BATTERY_V, get_batt_v_str(), strlen(get_batt_v_str()));
-			slide_set(BATTERY_LVL, get_batt_lvl_str(), strlen(get_batt_lvl_str()));
+			ostentus_slide_set(o_dev,
+					   BATTERY_V,
+					   get_batt_v_str(),
+					   strlen(get_batt_v_str()));
+			ostentus_slide_set(o_dev,
+					   BATTERY_LVL,
+					   get_batt_lvl_str(),
+					   strlen(get_batt_lvl_str()));
 		));
 	));
 
@@ -412,7 +418,7 @@ static void get_cumulative_handler(struct golioth_client *client,
 	uint64_t data;
 	bool ok;
 
-	ZCBOR_STATE_D(decoding_state, 1, payload, payload_size, 1);
+	ZCBOR_STATE_D(decoding_state, 1, payload, payload_size, 1, NULL);
 	ok = zcbor_map_start_decode(decoding_state);
 	if (!ok) {
 		goto cumulative_decode_error;
