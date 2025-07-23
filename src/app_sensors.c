@@ -377,54 +377,84 @@ void app_sensors_read_and_stream(void)
 	LOG_DBG("Ontime:\t(ch0): %lld\t(ch1): %lld", adc_ch0.runtime, adc_ch1.runtime);
 
 	/* Send sensor data to Golioth */
-	/* For this demo, we just send counter data to Golioth */
-	static uint16_t counter;
+	if (!ch0_invalid && !ch1_invalid) {
+		push_dual_adc_to_golioth(&ch0_raw, &ch1_raw);
+	} else if (!ch0_invalid) {
+		push_single_adc_to_golioth(&ch0_raw, CH0_PATH);
+	} else if (!ch1_invalid) {
+		push_single_adc_to_golioth(&ch1_raw, CH1_PATH);
+	}
+}
 
-	/* Encode sensor data using CBOR serialization */
-	uint8_t cbor_buf[13];
-
-	ZCBOR_STATE_E(zse, 1, cbor_buf, sizeof(cbor_buf), 1);
-
-	bool ok = zcbor_map_start_encode(zse, 1) &&
-		  zcbor_tstr_put_lit(zse, "counter") &&
-		  zcbor_uint32_put(zse, counter) &&
-		  zcbor_map_end_encode(zse, 1);
-
-	if (!ok) {
-		LOG_ERR("Failed to encode CBOR.");
+static void get_cumulative_handler(struct golioth_client *client,
+				  const struct golioth_response *response,
+				  const char *path,
+				  const uint8_t *payload,
+				  size_t payload_size,
+				  void *arg)
+{
+	if (response->status != GOLIOTH_OK) {
+		LOG_ERR("Failed to receive cumulative value: %d", response->status);
 		return;
 	}
 
-		size_t cbor_size = zse->payload - cbor_buf;
-
-		LOG_DBG("Streaming counter: %d", counter);
-
-		/* Stream data to Golioth */
-		err = golioth_stream_set_async(client, "sensor", GOLIOTH_CONTENT_TYPE_CBOR,
-					       cbor_buf, cbor_size, async_error_handler, NULL);
-		if (err) {
-			LOG_ERR("Failed to send sensor data to Golioth: %d", err);
+	if ((payload_size == 1) && (payload[0] == 0xf6)) {
+		/* 0xf6 is Null in CBOR */
+		if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
+			adc_ch0.loaded_from_cloud = true;
+			adc_ch1.loaded_from_cloud = true;
+			k_sem_give(&adc_data_sem);
 		}
-	} else {
-		LOG_DBG("No connection available, skipping streaming counter: %d", counter);
+		return;
 	}
 
-	/* Golioth custom hardware for demos */
-	IF_ENABLED(CONFIG_LIB_OSTENTUS, (
-		/* Update slide values on Ostentus
-		 *  -values should be sent as strings
-		 *  -use the enum from app_sensors.h for slide key values
-		 */
-		char sbuf[32];
+	uint64_t decoded_ch0 = 0;
+	uint64_t decoded_ch1 = 0;
+	bool found_ch0 = 0;
+	bool found_ch1 = 0;
 
-		snprintk(sbuf, sizeof(sbuf), "%d", counter);
-		ostentus_slide_set(o_dev, UP_COUNTER, sbuf, strlen(sbuf));
-		snprintk(sbuf, sizeof(sbuf), "%d", 65535 - counter);
-		ostentus_slide_set(o_dev, DN_COUNTER, sbuf, strlen(sbuf));
-	));
+	struct zcbor_string key;
+	uint64_t data;
+	bool ok;
 
-	/* Increment for the next run */
-	++counter;
+	ZCBOR_STATE_D(decoding_state, 1, payload, payload_size, 1, NULL);
+	ok = zcbor_map_start_decode(decoding_state);
+	if (!ok) {
+		goto cumulative_decode_error;
+	}
+
+	while (decoding_state->elem_count > 1) {
+		ok = zcbor_tstr_decode(decoding_state, &key) &&
+		     zcbor_uint64_decode(decoding_state, &data);
+		if (!ok) {
+			goto cumulative_decode_error;
+		}
+
+		if (strncmp(key.value, "ch0", 3) == 0) {
+			found_ch0 = true;
+			decoded_ch0 = data;
+		} else if (strncmp(key.value, "ch1", 3) == 0){
+			found_ch1 = true;
+			decoded_ch1 = data;
+		} else {
+			continue;
+		}
+	}
+
+	if ((found_ch0 && found_ch1) == false) {
+		goto cumulative_decode_error;
+	} else {
+		LOG_DBG("Decoded: ch0: %lld, ch1: %lld", decoded_ch0, decoded_ch1);
+		if (k_sem_take(&adc_data_sem, K_MSEC(300)) == 0) {
+			adc_ch0.total_cloud = decoded_ch0;
+			adc_ch1.total_cloud = decoded_ch1;
+			adc_ch0.loaded_from_cloud = true;
+			adc_ch1.loaded_from_cloud = true;
+			k_sem_give(&adc_data_sem);
+		}
+		return;
+	}
+
 cumulative_decode_error:
 	LOG_ERR("ZCBOR Decoding Error");
 	LOG_HEXDUMP_ERR(payload, payload_size, "cbor_payload");
