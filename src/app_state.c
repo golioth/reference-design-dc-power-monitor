@@ -30,12 +30,13 @@ static struct golioth_client *client;
 static struct ontime ot;
 
 static void async_handler(struct golioth_client *client,
-				       const struct golioth_response *response,
-				       const char *path,
-				       void *arg)
+			  enum golioth_status status,
+			  const struct golioth_coap_rsp_code *coap_rsp_code,
+			  const char *path,
+			  void *arg)
 {
-	if (response->status != GOLIOTH_OK) {
-		LOG_WRN("Failed to set state: %d", response->status);
+	if (status != GOLIOTH_OK) {
+		LOG_WRN("Failed to set state: %d", status);
 		return;
 	}
 
@@ -180,13 +181,16 @@ int app_state_report_ontime(adc_node_t *ch0, adc_node_t *ch1)
 	return 0;
 }
 
-static void app_state_desired_handler(struct golioth_client *client,
-				      const struct golioth_response *response,
-				      const char *path,
-				      const uint8_t *payload,
-				      size_t payload_size,
+static void app_state_desired_handler(struct golioth_client *client, enum golioth_status status,
+				      const struct golioth_coap_rsp_code *coap_rsp_code,
+				      const char *path, const uint8_t *payload, size_t payload_size,
 				      void *arg)
 {
+	int err = 0;
+	int ret;
+
+	if (status != GOLIOTH_OK) {
+		LOG_ERR("Failed to receive '%s' endpoint: %d", APP_STATE_DESIRED_ENDP, status);
 	if (response->status != GOLIOTH_OK) {
 		LOG_ERR("Failed to receive '%s' endpoint: %d",
 			APP_STATE_DESIRED_ENDP,
