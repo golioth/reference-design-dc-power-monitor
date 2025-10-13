@@ -53,8 +53,8 @@ This app implements:
 
 ### Settings Service
 
-The following settings should be set in the Device Settings menu of the
-[Golioth Console](https://console.golioth.io).
+The following settings should be set in [the Device Settings menu of the
+Golioth Console](https://console.golioth.io/device-settings).
 
   - `LOOP_DELAY_S`
     Adjusts the delay between sensor readings. Set to an integer value
@@ -126,8 +126,8 @@ multiplied by 0.00125 to convert the values to Amps, Volts, and Watts.
 }
 ```
 
-If your board includes a battery, voltage and level readings will be
-sent to the `battery` endpoint.
+If your board includes a battery, voltage and level readings
+will be sent to the `battery` path.
 
 > [!NOTE]
 > Your Golioth project must have a Pipeline enabled to receive this
@@ -137,12 +137,7 @@ sent to the `battery` endpoint.
 #### Stateful Data (LightDB State)
 
 The concept of Digital Twin is demonstrated with the LightDB State via
-the `desired` and `actual` endpoints.
-
-The concept of Digital Twin is demonstrated with the LightDB State via
-the `state` path. Values will be updated by the device. The cloud may
-read the `state` path to determine device status, but only the device
-should ever write to that path.
+the `desired` and `actual` paths.
 
   - `desired/reset_cumulative` values may be changed from the cloud
     side. The device will recognize when this path is set to `true`,
