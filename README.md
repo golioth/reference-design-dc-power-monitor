@@ -28,7 +28,6 @@ images](https://github.com/golioth/reference-design-dc-power-monitor/releases).
 
 - Nordic nRF9160-DK
 - Golioth Aludel Elixir
-- Golioth Aludel Mini
 
 ### Additional Sensors/Components
 
