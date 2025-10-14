@@ -16,14 +16,13 @@ LOG_MODULE_REGISTER(app_sensors, LOG_LEVEL_DBG);
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/sensor/ina260.h>
 #include <zephyr/drivers/spi.h>
 
 #include "app_sensors.h"
 #include "app_state.h"
 #include "app_settings.h"
 
-/* FIXME: this is an awkward include */
-#include "../drivers/sensor/ina260/ina260.h"
 
 /* Convert DC reading to actual value */
 int64_t calculate_reading(uint8_t upper, uint8_t lower)
@@ -40,7 +39,7 @@ int64_t calculate_reading(uint8_t upper, uint8_t lower)
 static const struct device *o_dev = DEVICE_DT_GET_ANY(golioth_ostentus);
 #endif
 #ifdef CONFIG_ALUDEL_BATTERY_MONITOR
-#include "battery_monitor/battery.h"
+#include <battery_monitor.h>
 #endif
 
 static struct golioth_client *client;
@@ -87,13 +86,12 @@ void get_ontime(struct ontime *ot)
 }
 
 /* Callback for LightDB Stream */
-static void async_error_handler(struct golioth_client *client,
-				const struct golioth_response *response,
-				const char *path,
+static void async_error_handler(struct golioth_client *client, enum golioth_status status,
+				const struct golioth_coap_rsp_code *coap_rsp_code, const char *path,
 				void *arg)
 {
-	if (response->status != GOLIOTH_OK) {
-		LOG_ERR("Async task failed: %d", response->status);
+	if (status != GOLIOTH_OK) {
+		LOG_ERR("Async task failed: %d", status);
 		return;
 	}
 }
@@ -208,6 +206,11 @@ static int get_raw_sensor_values(adc_node_t *sensor, vcp_raw_t *values, bool get
 
 static int push_dual_adc_to_golioth(vcp_raw_t *ch0_raw, vcp_raw_t *ch1_raw)
 {
+	/* Only stream sensor data if connected */
+	if (false == golioth_client_is_connected(client)) {
+		return GOLIOTH_ERR_INVALID_STATE;
+	}
+
 	int err;
 	char json_buf[128];
 
@@ -241,6 +244,11 @@ static int push_dual_adc_to_golioth(vcp_raw_t *ch0_raw, vcp_raw_t *ch1_raw)
 
 static int push_single_adc_to_golioth(vcp_raw_t *single_ch_data, char *single_ch_path)
 {
+	/* Only stream sensor data if connected */
+	if (false == golioth_client_is_connected(client)) {
+		return GOLIOTH_ERR_INVALID_STATE;
+	}
+
 	int err;
 	char json_buf[128];
 
@@ -339,9 +347,9 @@ void app_sensors_read_and_stream(void)
 					   get_batt_v_str(),
 					   strlen(get_batt_v_str()));
 			ostentus_slide_set(o_dev,
-					   BATTERY_LVL,
-					   get_batt_lvl_str(),
-					   strlen(get_batt_lvl_str()));
+					   BATTERY_PCT,
+					   get_batt_pct_str(),
+					   strlen(get_batt_pct_str()));
 		));
 	));
 
@@ -387,15 +395,13 @@ void app_sensors_read_and_stream(void)
 	}
 }
 
-static void get_cumulative_handler(struct golioth_client *client,
-				  const struct golioth_response *response,
-				  const char *path,
-				  const uint8_t *payload,
-				  size_t payload_size,
-				  void *arg)
+static void get_cumulative_handler(struct golioth_client *client, enum golioth_status status,
+				   const struct golioth_coap_rsp_code *coap_rsp_code,
+				   const char *path, const uint8_t *payload, size_t payload_size,
+				   void *arg)
 {
-	if (response->status != GOLIOTH_OK) {
-		LOG_ERR("Failed to receive cumulative value: %d", response->status);
+	if (status != GOLIOTH_OK) {
+		LOG_ERR("Failed to receive '%s' endpoint: %d", APP_STATE_DESIRED_ENDP, status);
 		return;
 	}
 
