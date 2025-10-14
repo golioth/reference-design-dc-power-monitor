@@ -34,6 +34,7 @@
 		group1 {
 			psels = <NRF_PSEL(TWIM_SDA, 0, 18)>,
 				<NRF_PSEL(TWIM_SCL, 0, 19)>;
+			bias-pull-up; /* Added for VCP Monitor Click with pull-ups removed */
 		};
 	};
 
