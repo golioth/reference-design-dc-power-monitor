@@ -16,14 +16,13 @@ LOG_MODULE_REGISTER(app_sensors, LOG_LEVEL_DBG);
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/sensor/ina260.h>
 #include <zephyr/drivers/spi.h>
 
 #include "app_sensors.h"
 #include "app_state.h"
 #include "app_settings.h"
 
-/* FIXME: this is an awkward include */
-#include "../drivers/sensor/ina260/ina260.h"
 
 /* Convert DC reading to actual value */
 int64_t calculate_reading(uint8_t upper, uint8_t lower)

@@ -52,5 +52,10 @@ manifest:
       revision: v1.1.0
       url: https://github.com/golioth/battery-monitor
 
+    - name: golioth-ina260-driver
+      path: deps/modules/lib/ina260
+      revision: v1.0.0
+      url: https://github.com/golioth/zephyr-ina260.git
+
   self:
     path: app
